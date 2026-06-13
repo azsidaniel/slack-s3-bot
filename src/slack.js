@@ -348,16 +348,12 @@ export const createSlackApp = () => {
     if (!COMMANDS.has(command)) {
       await reply(say, {
         threadTs,
-        text: 'Comando invalido. Use: test, list, set-folder, upload ou upload --dry-run.',
+        text: 'Comando invalido. Use: help, info, test, list, set-folder, upload ou upload --dry-run.',
       });
       return;
     }
 
     try {
-      const channelName = await getChannelName(client, event.channel);
-      const savedPrefix = (await getSavedPrefix(s3Client, event.channel))?.prefix;
-      const prefix = targetPrefix || savedPrefix;
-
       if (command === 'help' || command === 'info') {
         await reply(say, {
           threadTs,
@@ -365,6 +361,10 @@ export const createSlackApp = () => {
         });
         return;
       }
+
+      const channelName = await getChannelName(client, event.channel);
+      const savedPrefix = (await getSavedPrefix(s3Client, event.channel))?.prefix;
+      const prefix = targetPrefix || savedPrefix;
 
       if (command === 'set-folder') {
         await handleSetFolder({
