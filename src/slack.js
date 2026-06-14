@@ -20,7 +20,6 @@ import {
 const COMMANDS = new Set([
   'drive-list',
   'help',
-  'info',
   'list',
   'set-drive-folder',
   'set-folder',
@@ -28,6 +27,7 @@ const COMMANDS = new Set([
   'upload',
   'upload-drive',
 ]);
+const BOT_MENTION_LABEL = '@info-s3';
 
 const BUCKET_ERROR_NAMES = new Set([
   'AccessDenied',
@@ -83,21 +83,21 @@ const parseCommand = (text) => {
 const getHelpMessage = () =>
   [
     'Comandos disponiveis:',
-    '`@bot help` ou `@bot info` - lista os comandos e o uso.',
-    '`@bot set-folder nome-da-pasta` - salva a pasta S3 que este canal deve usar.',
-    '`@bot set-drive-folder link-ou-id-da-pasta` - salva a pasta publica do Google Drive que este canal deve usar como fonte.',
-    '`@bot test` - valida Slack, AWS e mostra a pasta S3 configurada para o canal.',
-    '`@bot list` - lista arquivos da pasta S3 configurada.',
-    '`@bot drive-list` - lista arquivos da pasta Drive configurada.',
-    '`@bot upload --dry-run` - mostra para onde os anexos da thread seriam enviados.',
-    '`@bot upload` - envia os anexos da thread para a pasta S3 configurada.',
-    '`@bot upload-drive --dry-run` - mostra para onde os arquivos do Drive seriam enviados.',
-    '`@bot upload-drive` - baixa os arquivos do Drive e envia para a pasta S3 configurada.',
+    `\`${BOT_MENTION_LABEL} help\` - lista os comandos e o uso.`,
+    `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\` - salva a pasta S3 que este canal deve usar.`,
+    `\`${BOT_MENTION_LABEL} set-drive-folder link-ou-id-da-pasta\` - salva a pasta publica do Google Drive que este canal deve usar como fonte.`,
+    `\`${BOT_MENTION_LABEL} test\` - valida Slack, AWS e mostra a pasta S3 configurada para o canal.`,
+    `\`${BOT_MENTION_LABEL} list\` - lista arquivos da pasta S3 configurada.`,
+    `\`${BOT_MENTION_LABEL} drive-list\` - lista arquivos da pasta Drive configurada.`,
+    `\`${BOT_MENTION_LABEL} upload --dry-run\` - mostra para onde os anexos da thread seriam enviados.`,
+    `\`${BOT_MENTION_LABEL} upload\` - envia os anexos da thread para a pasta S3 configurada.`,
+    `\`${BOT_MENTION_LABEL} upload-drive --dry-run\` - mostra para onde os arquivos do Drive seriam enviados.`,
+    `\`${BOT_MENTION_LABEL} upload-drive\` - baixa os arquivos do Drive e envia para a pasta S3 configurada.`,
     '',
     'Antes de usar `list`, `upload` ou `upload-drive`, configure a pasta S3 deste canal:',
-    '`@bot set-folder nome-da-pasta`',
+    `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
     'Para usar Drive como fonte, configure tambem:',
-    '`@bot set-drive-folder link-ou-id-da-pasta`',
+    `\`${BOT_MENTION_LABEL} set-drive-folder link-ou-id-da-pasta\``,
   ].join('\n');
 
 const getUnconfiguredChannelMessage = (channelName) =>
@@ -105,9 +105,9 @@ const getUnconfiguredChannelMessage = (channelName) =>
     `Este canal ainda nao tem uma pasta S3 configurada.`,
     `Canal Slack: ${channelName}`,
     'Informe a pasta existente no S3 com:',
-    '`@bot set-folder nome-da-pasta`',
+    `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
     'Exemplo:',
-    '`@bot set-folder nome-da-pasta`',
+    `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
   ].join('\n');
 
 const getChannelName = async (client, channelId) => {
@@ -191,8 +191,8 @@ const getMissingPrefixMessage = ({ channelName, prefix }) =>
     `Nao encontrei arquivos na pasta S3: ${getS3Uri(`${prefix}/`)}`,
     `Canal Slack: ${channelName}`,
     'Se a pasta do S3 tiver outro nome, salve a pasta correta para este canal:',
-    '`@bot set-folder nome-da-pasta`',
-    'Depois disso, `@bot list`, `@bot upload --dry-run` e `@bot upload` usarao essa pasta automaticamente.',
+    `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
+    `Depois disso, \`${BOT_MENTION_LABEL} list\`, \`${BOT_MENTION_LABEL} upload --dry-run\` e \`${BOT_MENTION_LABEL} upload\` usarao essa pasta automaticamente.`,
   ].join('\n');
 
 const handleSetFolder = async ({
@@ -206,7 +206,7 @@ const handleSetFolder = async ({
   if (!prefix) {
     await reply(say, {
       threadTs,
-      text: 'Informe a pasta S3. Exemplo: `@bot set-folder nome-da-pasta`',
+      text: `Informe a pasta S3. Exemplo: \`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
     });
     return;
   }
@@ -246,7 +246,7 @@ const handleSetDriveFolder = async ({
   if (!driveFolderId) {
     await reply(say, {
       threadTs,
-      text: 'Informe a pasta do Google Drive. Exemplo: `@bot set-drive-folder link-ou-id-da-pasta`',
+      text: `Informe a pasta do Google Drive. Exemplo: \`${BOT_MENTION_LABEL} set-drive-folder link-ou-id-da-pasta\``,
     });
     return;
   }
@@ -271,7 +271,7 @@ const handleSetDriveFolder = async ({
     text: [
       `Pasta Drive salva para este canal: ${driveFolderId}`,
       `Arquivos encontrados agora: ${files.length}`,
-      'A partir de agora, `@bot drive-list` e `@bot upload-drive` usarao essa pasta como fonte.',
+      `A partir de agora, \`${BOT_MENTION_LABEL} drive-list\` e \`${BOT_MENTION_LABEL} upload-drive\` usarao essa pasta como fonte.`,
     ].join('\n'),
   });
 };
@@ -324,7 +324,7 @@ const getUnconfiguredDriveMessage = () =>
   [
     'Este canal ainda nao tem uma pasta do Google Drive configurada.',
     'Informe a pasta publica do Drive com:',
-    '`@bot set-drive-folder link-ou-id-da-pasta`',
+    `\`${BOT_MENTION_LABEL} set-drive-folder link-ou-id-da-pasta\``,
   ].join('\n');
 
 const getDriveFileLines = (files) =>
@@ -553,13 +553,13 @@ export const createSlackApp = () => {
     if (!COMMANDS.has(command)) {
       await reply(say, {
         threadTs,
-        text: 'Comando invalido. Use: help, info, test, list, drive-list, set-folder, set-drive-folder, upload, upload-drive ou upload --dry-run.',
+        text: 'Comando invalido. Use: help, test, list, drive-list, set-folder, set-drive-folder, upload, upload-drive ou upload --dry-run.',
       });
       return;
     }
 
     try {
-      if (command === 'help' || command === 'info') {
+      if (command === 'help') {
         await reply(say, {
           threadTs,
           text: getHelpMessage(),
@@ -670,10 +670,11 @@ export const createSlackApp = () => {
     await client.chat.postMessage({
       channel: event.channel,
       text: [
-        `Obrigado por me adicionar ao canal #${channelName}.`,
-        'Antes de listar ou subir arquivos, configure qual pasta S3 este canal deve usar:',
-        '`@bot set-folder nome-da-pasta`',
-        'Para ver todos os comandos: `@bot help`',
+        `Ola! Obrigado por me adicionar ao canal #${channelName}.`,
+        'Eu ajudo a publicar arquivos no S3. Posso subir anexos de threads do Slack ou arquivos de uma pasta publica do Google Drive.',
+        'Para comecar, configure a pasta S3 de destino deste canal:',
+        `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
+        `Depois veja todos os comandos com \`${BOT_MENTION_LABEL} help\`.`,
       ].join('\n'),
     });
   });

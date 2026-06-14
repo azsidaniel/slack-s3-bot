@@ -20,21 +20,20 @@ s3://meu-bucket/nome-da-pasta/media/images/share.jpg
 Use mencionando o bot em uma thread:
 
 ```text
-@bot test
-@bot help
-@bot info
-@bot list
-@bot drive-list
-@bot set-folder nome-da-pasta
-@bot set-drive-folder link-ou-id-da-pasta
-@bot upload --dry-run
-@bot upload
-@bot upload-drive --dry-run
-@bot upload-drive
+@info-s3 test
+@info-s3 help
+@info-s3 list
+@info-s3 drive-list
+@info-s3 set-folder nome-da-pasta
+@info-s3 set-drive-folder link-ou-id-da-pasta
+@info-s3 upload --dry-run
+@info-s3 upload
+@info-s3 upload-drive --dry-run
+@info-s3 upload-drive
 ```
 
 - `test`: valida acesso ao bucket e mostra o prefixo do canal.
-- `help` / `info`: lista todos os comandos e explica o uso.
+- `help`: lista todos os comandos e explica o uso.
 - `list`: lista arquivos da pasta S3 configurada.
 - `drive-list`: lista arquivos da pasta publica do Google Drive configurada.
 - `set-folder nome-da-pasta`: salva a pasta S3 que este canal deve usar.
@@ -48,7 +47,7 @@ O bot nao assume o nome do canal como pasta S3. Cada canal precisa ser
 configurado explicitamente:
 
 ```text
-@bot set-folder nome-da-pasta
+@info-s3 set-folder nome-da-pasta
 ```
 
 O bot nao cria uma pasta nova automaticamente. Se a pasta informada nao tiver
@@ -57,25 +56,25 @@ arquivos no S3, ele pede o nome correto antes de salvar ou fazer upload.
 Para salvar a pasta correta para um canal:
 
 ```text
-@bot set-folder nome-da-pasta
+@info-s3 set-folder nome-da-pasta
 ```
 
 Para salvar a pasta publica do Google Drive que sera usada como fonte:
 
 ```text
-@bot set-drive-folder https://drive.google.com/drive/folders/id-da-pasta
+@info-s3 set-drive-folder https://drive.google.com/drive/folders/id-da-pasta
 ```
 
 Depois disso, neste canal, os comandos sem pasta explicita passam a usar a
 pasta salva:
 
 ```text
-@bot list
-@bot upload --dry-run
-@bot upload
-@bot drive-list
-@bot upload-drive --dry-run
-@bot upload-drive
+@info-s3 list
+@info-s3 upload --dry-run
+@info-s3 upload
+@info-s3 drive-list
+@info-s3 upload-drive --dry-run
+@info-s3 upload-drive
 ```
 
 Esse mapeamento fica salvo localmente em `data/channel-prefixes.json`.
@@ -150,7 +149,7 @@ Subscribe to bot events -> app_mention
 Subscribe to bot events -> member_joined_channel
 ```
 
-Mesmo usando Socket Mode, o Slack so envia `@bot comando` se esse evento estiver
+Mesmo usando Socket Mode, o Slack so envia `@info-s3 comando` se esse evento estiver
 assinado. O evento `member_joined_channel` permite o bot explicar a configuracao
 quando for adicionado a um canal.
 
@@ -190,7 +189,7 @@ PREFIX_STORE=s3
 PREFIX_STORE_S3_KEY=_bot/channel-prefixes.json
 ```
 
-Com isso, `@bot set-folder nome-da-pasta` grava o mapeamento em:
+Com isso, `@info-s3 set-folder nome-da-pasta` grava o mapeamento em:
 
 ```text
 s3://<bucket>/_bot/channel-prefixes.json
