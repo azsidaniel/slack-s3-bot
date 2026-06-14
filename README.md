@@ -33,7 +33,6 @@ Use mencionando o bot em uma thread:
 @info-s3 sync-drive
 @info-s3 sync-drive-on 5 7d
 @info-s3 sync-drive-off
-@info-s3 sync-drive-status
 ```
 
 - `test`: valida acesso ao bucket e mostra o prefixo do canal.
@@ -49,7 +48,6 @@ Use mencionando o bot em uma thread:
 - `sync-drive`: sincroniza manualmente a pasta Drive configurada para o S3.
 - `sync-drive-on <minutos> <duracao>`: ativa sync automatico com expiracao obrigatoria.
 - `sync-drive-off`: desativa sync automatico.
-- `sync-drive-status`: mostra o status do sync automatico.
 
 O bot nao assume o nome do canal como pasta S3. Cada canal precisa ser
 configurado explicitamente:
@@ -84,7 +82,7 @@ pasta salva:
 @info-s3 sync-drive --dry-run
 @info-s3 sync-drive
 @info-s3 sync-drive-on 5 7d
-@info-s3 sync-drive-status
+@info-s3 status
 ```
 
 Esse mapeamento fica salvo localmente em `data/channel-prefixes.json`.

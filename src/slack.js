@@ -33,7 +33,6 @@ const COMMANDS = new Set([
   'sync-drive',
   'sync-drive-off',
   'sync-drive-on',
-  'sync-drive-status',
   'test',
   'upload',
 ]);
@@ -111,7 +110,6 @@ const getHelpMessage = () =>
     `\`${BOT_MENTION_LABEL} sync-drive\` - sincroniza a pasta Drive configurada para o S3.`,
     `\`${BOT_MENTION_LABEL} sync-drive-on 5 7d\` - ativa sync automatico por canal, com expiracao obrigatoria.`,
     `\`${BOT_MENTION_LABEL} sync-drive-off\` - desativa sync automatico neste canal.`,
-    `\`${BOT_MENTION_LABEL} sync-drive-status\` - mostra o status do sync automatico.`,
     '',
     'Antes de usar `list`, `upload` ou `sync-drive`, configure a pasta S3 deste canal:',
     `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
@@ -662,13 +660,6 @@ const handleSyncDriveOff = async ({
   });
 };
 
-const handleSyncDriveStatus = async ({ channelName, config, say, threadTs }) => {
-  await reply(say, {
-    threadTs,
-    text: getChannelStatusMessage({ channelName, config }),
-  });
-};
-
 export const createSlackApp = () => {
   const app = new App({
     appToken: process.env.SLACK_APP_TOKEN,
@@ -699,7 +690,7 @@ export const createSlackApp = () => {
     if (!COMMANDS.has(command)) {
       await reply(say, {
         threadTs,
-        text: 'Comando invalido. Use: help, test, status, list, drive-list, set-folder, set-drive-folder, upload, sync-drive, sync-drive-on, sync-drive-off ou sync-drive-status.',
+        text: 'Comando invalido. Use: help, test, status, list, drive-list, set-folder, set-drive-folder, upload, sync-drive, sync-drive-on ou sync-drive-off.',
       });
       return;
     }
@@ -753,16 +744,6 @@ export const createSlackApp = () => {
         await reply(say, {
           threadTs,
           text: getChannelStatusMessage({ channelName, config: savedConfig }),
-        });
-        return;
-      }
-
-      if (command === 'sync-drive-status') {
-        await handleSyncDriveStatus({
-          channelName,
-          config: savedConfig,
-          say,
-          threadTs,
         });
         return;
       }
