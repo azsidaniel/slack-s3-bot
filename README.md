@@ -22,26 +22,34 @@ Use mencionando o bot em uma thread:
 ```text
 @info-s3 test
 @info-s3 help
+@info-s3 status
 @info-s3 list
 @info-s3 drive-list
 @info-s3 set-folder nome-da-pasta
 @info-s3 set-drive-folder link-ou-id-da-pasta
 @info-s3 upload --dry-run
 @info-s3 upload
-@info-s3 upload-drive --dry-run
-@info-s3 upload-drive
+@info-s3 sync-drive --dry-run
+@info-s3 sync-drive
+@info-s3 sync-drive-on 5 7d
+@info-s3 sync-drive-off
+@info-s3 sync-drive-status
 ```
 
 - `test`: valida acesso ao bucket e mostra o prefixo do canal.
 - `help`: lista todos os comandos e explica o uso.
+- `status`: mostra a configuracao geral do canal.
 - `list`: lista arquivos da pasta S3 configurada.
 - `drive-list`: lista arquivos da pasta publica do Google Drive configurada.
 - `set-folder nome-da-pasta`: salva a pasta S3 que este canal deve usar.
 - `set-drive-folder link-ou-id-da-pasta`: salva a pasta publica do Google Drive usada como fonte.
 - `upload --dry-run`: mostra para onde os anexos da thread seriam enviados.
 - `upload`: baixa os anexos da thread e envia para o S3.
-- `upload-drive --dry-run`: mostra para onde os arquivos do Drive seriam enviados.
-- `upload-drive`: baixa os arquivos da pasta Drive e envia para o S3.
+- `sync-drive --dry-run`: mostra quais arquivos do Drive seriam sincronizados no S3.
+- `sync-drive`: sincroniza manualmente a pasta Drive configurada para o S3.
+- `sync-drive-on <minutos> <duracao>`: ativa sync automatico com expiracao obrigatoria.
+- `sync-drive-off`: desativa sync automatico.
+- `sync-drive-status`: mostra o status do sync automatico.
 
 O bot nao assume o nome do canal como pasta S3. Cada canal precisa ser
 configurado explicitamente:
@@ -73,12 +81,25 @@ pasta salva:
 @info-s3 upload --dry-run
 @info-s3 upload
 @info-s3 drive-list
-@info-s3 upload-drive --dry-run
-@info-s3 upload-drive
+@info-s3 sync-drive --dry-run
+@info-s3 sync-drive
+@info-s3 sync-drive-on 5 7d
+@info-s3 sync-drive-status
 ```
 
 Esse mapeamento fica salvo localmente em `data/channel-prefixes.json`.
 Em AWS, use `PREFIX_STORE=s3` para salvar o mapeamento no proprio bucket.
+
+O sync automatico e por canal. Exemplo:
+
+```text
+@info-s3 sync-drive-on 5 7d
+```
+
+Esse comando sincroniza a pasta Drive configurada para o S3 a cada 5 minutos por
+7 dias. A duracao e obrigatoria, aceita formatos como `2h`, `7d` e `60d`, e o
+limite maximo e 60 dias. O bot so notifica o canal quando houver arquivos
+alterados.
 
 ## Mapeamento
 

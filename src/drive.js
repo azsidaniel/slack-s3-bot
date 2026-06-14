@@ -72,7 +72,10 @@ export const listDriveFolderFiles = async (folderId) => {
       'q',
       `'${folderId}' in parents and trashed = false`,
     );
-    url.searchParams.set('fields', 'nextPageToken, files(id, name, mimeType, size)');
+    url.searchParams.set(
+      'fields',
+      'nextPageToken, files(id, name, mimeType, size, modifiedTime, md5Checksum)',
+    );
     url.searchParams.set('includeItemsFromAllDrives', 'true');
     url.searchParams.set('orderBy', 'name');
     url.searchParams.set('pageSize', '1000');

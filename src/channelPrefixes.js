@@ -66,33 +66,35 @@ const writeConfiguredPrefixes = async (s3Client, prefixes) => {
 export const getSavedPrefix = async (s3Client, channelId) =>
   (await readConfiguredPrefixes(s3Client))[channelId];
 
-export const savePrefix = async (s3Client, { channelId, channelName, prefix }) => {
+export const listChannelConfigs = async (s3Client) =>
+  readConfiguredPrefixes(s3Client);
+
+export const saveChannelConfig = async (s3Client, channelId, config) => {
   const prefixes = await readConfiguredPrefixes(s3Client);
   const currentConfig = prefixes[channelId] || {};
 
   prefixes[channelId] = {
     ...currentConfig,
-    channelName,
-    prefix,
+    ...config,
     updatedAt: new Date().toISOString(),
   };
 
   await writeConfiguredPrefixes(s3Client, prefixes);
 };
 
+export const savePrefix = async (s3Client, { channelId, channelName, prefix }) => {
+  await saveChannelConfig(s3Client, channelId, {
+    channelName,
+    prefix,
+  });
+};
+
 export const saveDriveFolder = async (
   s3Client,
   { channelId, channelName, driveFolderId },
 ) => {
-  const prefixes = await readConfiguredPrefixes(s3Client);
-  const currentConfig = prefixes[channelId] || {};
-
-  prefixes[channelId] = {
-    ...currentConfig,
+  await saveChannelConfig(s3Client, channelId, {
     channelName,
     driveFolderId,
-    updatedAt: new Date().toISOString(),
-  };
-
-  await writeConfiguredPrefixes(s3Client, prefixes);
+  });
 };
