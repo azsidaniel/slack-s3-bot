@@ -24,17 +24,25 @@ Use mencionando o bot em uma thread:
 @bot help
 @bot info
 @bot list
+@bot drive-list
 @bot set-folder nome-da-pasta
+@bot set-drive-folder link-ou-id-da-pasta
 @bot upload --dry-run
 @bot upload
+@bot upload-drive --dry-run
+@bot upload-drive
 ```
 
 - `test`: valida acesso ao bucket e mostra o prefixo do canal.
 - `help` / `info`: lista todos os comandos e explica o uso.
-- `list`: lista arquivos em `s3://<bucket>/<canal>/`.
+- `list`: lista arquivos da pasta S3 configurada.
+- `drive-list`: lista arquivos da pasta publica do Google Drive configurada.
 - `set-folder nome-da-pasta`: salva a pasta S3 que este canal deve usar.
+- `set-drive-folder link-ou-id-da-pasta`: salva a pasta publica do Google Drive usada como fonte.
 - `upload --dry-run`: mostra para onde os anexos da thread seriam enviados.
 - `upload`: baixa os anexos da thread e envia para o S3.
+- `upload-drive --dry-run`: mostra para onde os arquivos do Drive seriam enviados.
+- `upload-drive`: baixa os arquivos da pasta Drive e envia para o S3.
 
 O bot nao assume o nome do canal como pasta S3. Cada canal precisa ser
 configurado explicitamente:
@@ -52,6 +60,12 @@ Para salvar a pasta correta para um canal:
 @bot set-folder nome-da-pasta
 ```
 
+Para salvar a pasta publica do Google Drive que sera usada como fonte:
+
+```text
+@bot set-drive-folder https://drive.google.com/drive/folders/id-da-pasta
+```
+
 Depois disso, neste canal, os comandos sem pasta explicita passam a usar a
 pasta salva:
 
@@ -59,6 +73,9 @@ pasta salva:
 @bot list
 @bot upload --dry-run
 @bot upload
+@bot drive-list
+@bot upload-drive --dry-run
+@bot upload-drive
 ```
 
 Esse mapeamento fica salvo localmente em `data/channel-prefixes.json`.
@@ -91,6 +108,9 @@ SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
 S3_BUCKET=meu-bucket
 AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your-aws-access-key-id
+AWS_SECRET_ACCESS_KEY=your-aws-secret-access-key
+GOOGLE_DRIVE_API_KEY=your-google-drive-api-key
 S3_CACHE_CONTROL=public,max-age=60
 S3_ACL=public-read
 ALLOW_UPLOAD=true
@@ -145,6 +165,21 @@ s3:PutObject
 ```
 
 Se `S3_ACL=public-read`, tambem precisa de permissao para aplicar ACL.
+
+## Google Drive
+
+Para usar Drive como fonte, a pasta precisa estar publica para qualquer pessoa
+com o link e a Google Drive API precisa estar habilitada para a API key.
+
+Configure:
+
+```env
+GOOGLE_DRIVE_API_KEY=your-google-drive-api-key
+```
+
+Arquivos normais sao baixados e enviados para o S3. Arquivos Google Workspace
+como Docs, Sheets e Slides sao listados, mas ignorados no upload inicial porque
+precisam de exportacao para um formato definido.
 
 ## Persistencia por S3
 
