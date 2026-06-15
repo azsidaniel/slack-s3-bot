@@ -1,4 +1,4 @@
-import { App } from '@slack/bolt';
+import slackBolt from '@slack/bolt';
 
 import { buildAssetKey, getContentType, getSafeFilename } from './classifyAsset.js';
 import {
@@ -22,6 +22,8 @@ import {
   uploadObject,
 } from './s3.js';
 import { syncDriveFolderToS3 } from './syncDrive.js';
+
+const { App } = slackBolt;
 
 const COMMANDS = new Set([
   'drive-list',
