@@ -195,9 +195,9 @@ Configure:
 GOOGLE_DRIVE_API_KEY=your-google-drive-api-key
 ```
 
-Arquivos normais sao baixados e enviados para o S3. Arquivos Google Workspace
-como Docs, Sheets e Slides sao listados, mas ignorados no upload inicial porque
-precisam de exportacao para um formato definido.
+Arquivos normais sao baixados e enviados para o S3. Itens nativos do Google
+Drive, como Docs, Sheets, Slides, Forms, atalhos e subpastas, sao listados, mas
+ignorados no upload porque precisam de exportacao ou tratamento especifico.
 
 ## Persistencia por S3
 

@@ -1,16 +1,5 @@
 const DRIVE_API_BASE_URL = 'https://www.googleapis.com/drive/v3';
-const GOOGLE_WORKSPACE_MIME_TYPES = new Set([
-  'application/vnd.google-apps.document',
-  'application/vnd.google-apps.drawing',
-  'application/vnd.google-apps.form',
-  'application/vnd.google-apps.jam',
-  'application/vnd.google-apps.map',
-  'application/vnd.google-apps.presentation',
-  'application/vnd.google-apps.script',
-  'application/vnd.google-apps.shortcut',
-  'application/vnd.google-apps.site',
-  'application/vnd.google-apps.spreadsheet',
-]);
+const GOOGLE_DRIVE_NATIVE_MIME_TYPE_PREFIX = 'application/vnd.google-apps.';
 
 export const extractDriveFolderId = (input = '') => {
   const value = String(input).trim();
@@ -57,7 +46,7 @@ const assertDriveResponseIsOk = async (response, action) => {
 };
 
 export const isGoogleWorkspaceFile = (file) =>
-  GOOGLE_WORKSPACE_MIME_TYPES.has(file.mimeType);
+  String(file.mimeType || '').startsWith(GOOGLE_DRIVE_NATIVE_MIME_TYPE_PREFIX);
 
 export const listDriveFolderFiles = async (folderId) => {
   const apiKey = getDriveApiKey();
