@@ -111,7 +111,8 @@ const getHelpMessage = () =>
     `\`${BOT_MENTION_LABEL} sync-drive --dry-run\` - mostra quais arquivos do Drive seriam sincronizados no S3.`,
     `\`${BOT_MENTION_LABEL} sync-drive\` - sincroniza a pasta Drive configurada para o S3.`,
     `\`${BOT_MENTION_LABEL} sync-drive-on 5 7d\` - ativa sync automatico por canal, com expiracao obrigatoria.`,
-    `\`${BOT_MENTION_LABEL} sync-drive-off\` - desativa sync automatico neste canal.`,
+    `\`${BOT_MENTION_LABEL} sync-drive-on\` - reativa o sync automatico com a configuracao anterior, sem reiniciar a expiracao.`,
+    `\`${BOT_MENTION_LABEL} sync-drive-off\` - pausa o sync automatico neste canal, preservando a configuracao.`,
     '',
     'Antes de usar `list`, `upload` ou `sync-drive`, configure a pasta S3 deste canal:',
     `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
@@ -585,7 +586,71 @@ const handleSyncDriveOn = async ({
   s3Client,
   threadTs,
 }) => {
-  const [intervalArg, durationArg] = args.filter((arg) => !arg.startsWith('--'));
+  const syncArgs = args.filter((arg) => !arg.startsWith('--'));
+
+  if (syncArgs.length === 0) {
+    const sync = config?.driveSync;
+
+    if (!config?.prefix || !config?.driveFolderId) {
+      await reply(say, {
+        threadTs,
+        text: [
+          'Configure S3 e Drive antes de reativar o sync automatico.',
+          `S3: \`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
+          `Drive: \`${BOT_MENTION_LABEL} set-drive-folder link-ou-id-da-pasta\``,
+        ].join('\n'),
+      });
+      return;
+    }
+
+    if (!sync?.intervalMinutes || !sync?.expiresAt) {
+      await reply(say, {
+        threadTs,
+        text: [
+          'Nao existe uma configuracao anterior de sync automatico para este canal.',
+          `Crie uma nova com: \`${BOT_MENTION_LABEL} sync-drive-on 5 7d\``,
+        ].join('\n'),
+      });
+      return;
+    }
+
+    if (new Date(sync.expiresAt).getTime() <= Date.now()) {
+      await reply(say, {
+        threadTs,
+        text: [
+          `A configuracao anterior expirou em ${formatDateTime(sync.expiresAt)}.`,
+          `Crie uma nova com: \`${BOT_MENTION_LABEL} sync-drive-on 5 7d\``,
+        ].join('\n'),
+      });
+      return;
+    }
+
+    const nextRunAt = new Date(
+      Date.now() + sync.intervalMinutes * 60 * 1000,
+    ).toISOString();
+
+    await saveChannelConfig(s3Client, channelId, {
+      channelName,
+      driveSync: {
+        ...sync,
+        enabled: true,
+        nextRunAt,
+      },
+    });
+
+    await reply(say, {
+      threadTs,
+      text: [
+        'Sync automatico do Drive reativado com a configuracao anterior.',
+        `Intervalo: ${sync.intervalMinutes} minuto(s)`,
+        `Expira em: ${formatDateTime(sync.expiresAt)}`,
+        `Proxima execucao: ${formatDateTime(nextRunAt)}`,
+      ].join('\n'),
+    });
+    return;
+  }
+
+  const [intervalArg, durationArg] = syncArgs;
   const intervalMinutes = Number(intervalArg);
   const durationMs = parseDurationMs(durationArg);
   const error = getSyncConfigError({ durationMs, intervalMinutes });
@@ -658,7 +723,7 @@ const handleSyncDriveOff = async ({
 
   await reply(say, {
     threadTs,
-    text: 'Sync automatico do Drive desativado para este canal.',
+    text: 'Sync automatico do Drive pausado para este canal. A configuracao anterior foi preservada.',
   });
 };
 

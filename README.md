@@ -32,6 +32,7 @@ Use mencionando o bot em uma thread:
 @info-s3 sync-drive --dry-run
 @info-s3 sync-drive
 @info-s3 sync-drive-on 5 7d
+@info-s3 sync-drive-on
 @info-s3 sync-drive-off
 ```
 
@@ -47,7 +48,8 @@ Use mencionando o bot em uma thread:
 - `sync-drive --dry-run`: mostra quais arquivos do Drive seriam sincronizados no S3.
 - `sync-drive`: sincroniza manualmente a pasta Drive configurada para o S3.
 - `sync-drive-on <minutos> <duracao>`: ativa sync automatico com expiracao obrigatoria.
-- `sync-drive-off`: desativa sync automatico.
+- `sync-drive-on`: reativa o sync automatico com a configuracao anterior, sem reiniciar a expiracao.
+- `sync-drive-off`: pausa sync automatico e preserva a configuracao.
 
 O bot nao assume o nome do canal como pasta S3. Cada canal precisa ser
 configurado explicitamente:
@@ -82,6 +84,7 @@ pasta salva:
 @info-s3 sync-drive --dry-run
 @info-s3 sync-drive
 @info-s3 sync-drive-on 5 7d
+@info-s3 sync-drive-on
 @info-s3 status
 ```
 
@@ -98,6 +101,18 @@ Esse comando sincroniza a pasta Drive configurada para o S3 a cada 5 minutos por
 7 dias. A duracao e obrigatoria, aceita formatos como `2h`, `7d` e `60d`, e o
 limite maximo e 60 dias. O bot so notifica o canal quando houver arquivos
 alterados.
+
+Para pausar sem perder a agenda:
+
+```text
+@info-s3 sync-drive-off
+```
+
+Para reativar a agenda anterior sem reiniciar a contagem da expiracao:
+
+```text
+@info-s3 sync-drive-on
+```
 
 ## Mapeamento
 
