@@ -44,6 +44,7 @@ const COMMANDS = new Set([
   's3-sync',
   's3-sync-off',
   's3-sync-on',
+  's3-sync-schedule',
   'test',
   'slack-upload',
 ]);
@@ -53,6 +54,7 @@ const MIN_SYNC_DURATION_MS = 60 * 60 * 1000;
 const MIN_SYNC_INTERVAL_MINUTES = 5;
 const MAX_SYNC_INTERVAL_MINUTES = 1440;
 const SCHEDULER_TICK_MS = 60 * 1000;
+const SCHEDULE_TIME_ZONE = 'America/Sao_Paulo';
 
 const BUCKET_ERROR_NAMES = new Set([
   'AccessDenied',
@@ -105,6 +107,17 @@ const parseCommand = (text) => {
   };
 };
 
+const getCommandPayload = (text = '', command = '') => {
+  const cleanText = getCommandText(text);
+  const commandIndex = cleanText.toLowerCase().indexOf(command);
+
+  if (commandIndex < 0) {
+    return '';
+  }
+
+  return cleanText.slice(commandIndex + command.length).trim();
+};
+
 const getHelpMessage = () =>
   [
     'Comandos disponiveis:',
@@ -129,6 +142,7 @@ const getHelpMessage = () =>
     `\`${BOT_MENTION_LABEL} s3-sync-on 5 7d --delete\` - ativa sync automatico S3 espelhando data/.`,
     `\`${BOT_MENTION_LABEL} s3-sync-on\` - reativa o sync automatico S3 com a configuracao anterior.`,
     `\`${BOT_MENTION_LABEL} s3-sync-off\` - pausa o sync automatico S3, preservando a configuracao.`,
+    `\`${BOT_MENTION_LABEL} s3-sync-schedule\` - salva agenda JSON de datas exatas para sync S3.`,
     '',
     'Drive:',
     `\`${BOT_MENTION_LABEL} drive-list\` - lista arquivos da pasta Drive configurada.`,
@@ -197,6 +211,62 @@ const formatFileList = (files, formatter, limit = 20) => {
 
   return lines;
 };
+
+const parseS3SchedulePayload = (payload) => {
+  const jsonStart = payload.indexOf('[');
+
+  if (jsonStart < 0) {
+    throw new Error('Cole um array JSON depois do comando.');
+  }
+
+  const parsed = JSON.parse(payload.slice(jsonStart));
+
+  if (!Array.isArray(parsed)) {
+    throw new Error('A agenda precisa ser um array JSON.');
+  }
+
+  const ignoredRuns = [];
+  const runs = [];
+
+  parsed.forEach((item, index) => {
+    const data = String(item?.data || '').trim();
+    const hora = String(item?.hora || '').trim();
+
+    if (!hora) {
+      ignoredRuns.push({
+        data,
+        index,
+        reason: 'sem hora definida',
+      });
+      return;
+    }
+
+    const runAt = parseSaoPauloDateTime({ data, hora });
+
+    if (!runAt) {
+      ignoredRuns.push({
+        data,
+        hora,
+        index,
+        reason: 'data ou hora invalida',
+      });
+      return;
+    }
+
+    runs.push({
+      label: `${data} ${hora}`,
+      runAt,
+      status: 'pending',
+    });
+  });
+
+  runs.sort((a, b) => new Date(a.runAt).getTime() - new Date(b.runAt).getTime());
+
+  return { ignoredRuns, runs };
+};
+
+const getScheduleLines = (runs, limit = 10) =>
+  formatFileList(runs, (run) => `- ${run.label}`, limit);
 
 const getChannelName = async (client, channelId) => {
   const result = await client.conversations.info({ channel: channelId });
@@ -272,6 +342,58 @@ const formatDateTime = (isoDate) => {
     timeStyle: 'short',
     timeZone: 'America/Sao_Paulo',
   }).format(new Date(isoDate));
+};
+
+const getSaoPauloOffsetMs = (date) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false,
+    minute: '2-digit',
+    month: '2-digit',
+    second: '2-digit',
+    timeZone: SCHEDULE_TIME_ZONE,
+    year: 'numeric',
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const asUtc = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second),
+  );
+
+  return asUtc - date.getTime();
+};
+
+const parseSaoPauloDateTime = ({ data, hora }) => {
+  const dateMatch = String(data || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const timeMatch = String(hora || '').trim().match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);
+
+  if (!dateMatch || !timeMatch) {
+    return null;
+  }
+
+  const [, day, month, year] = dateMatch;
+  const [, hour, minute, second = '00'] = timeMatch;
+  const utcGuess = new Date(Date.UTC(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  ));
+  const offsetMs = getSaoPauloOffsetMs(utcGuess);
+  const date = new Date(utcGuess.getTime() - offsetMs);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString();
 };
 
 const parseDurationMs = (duration) => {
@@ -470,6 +592,7 @@ const handleTest = async ({ channelName, prefix, say, s3Client, threadTs }) => {
 const getChannelStatusMessage = ({ channelName, config }) => {
   const driveSync = config?.driveSync;
   const s3Sync = config?.s3Sync;
+  const s3SyncSchedule = config?.s3SyncSchedule;
   const driveSyncStatus = driveSync?.enabled
     ? `ativo, a cada ${driveSync.intervalMinutes} minuto(s), expira em ${formatDateTime(driveSync.expiresAt)}`
     : 'desativado';
@@ -477,6 +600,13 @@ const getChannelStatusMessage = ({ channelName, config }) => {
   const s3SyncStatus = s3Sync?.enabled
     ? `ativo, a cada ${s3Sync.intervalMinutes} minuto(s), expira em ${formatDateTime(s3Sync.expiresAt)}, modo: ${s3SyncMode}`
     : 'desativado';
+  const pendingScheduleRuns = (s3SyncSchedule?.runs || []).filter(
+    (run) => run.status === 'pending',
+  );
+  const scheduleStatus = s3SyncSchedule?.enabled
+    ? `ativo, pendentes: ${pendingScheduleRuns.length}, modo: ${s3SyncSchedule.deleteExtra ? 'espelhar com delete' : 'copiar novos/alterados'}`
+    : 'desativado';
+  const nextScheduleRun = pendingScheduleRuns[0];
 
   return [
     `Status do canal #${channelName}:`,
@@ -491,6 +621,9 @@ const getChannelStatusMessage = ({ channelName, config }) => {
     `S3 ultima sync: ${formatDateTime(s3Sync?.lastRunAt)}`,
     `S3 proxima sync: ${formatDateTime(s3Sync?.nextRunAt)}`,
     `S3 ultimo resultado: ${s3Sync?.lastResult?.status || 'sem execucao'}`,
+    `S3 agenda por data: ${scheduleStatus}`,
+    `S3 agenda proxima execucao: ${nextScheduleRun ? formatDateTime(nextScheduleRun.runAt) : 'nunca'}`,
+    `S3 agenda ultimo resultado: ${s3SyncSchedule?.lastResult?.status || 'sem execucao'}`,
   ].join('\n');
 };
 
@@ -717,6 +850,88 @@ const handleSyncS3Off = async ({
   await reply(say, {
     threadTs,
     text: 'Sync automatico S3 pausado para este canal. A configuracao anterior foi preservada.',
+  });
+};
+
+const handleSyncS3Schedule = async ({
+  channelId,
+  channelName,
+  config,
+  deleteExtra,
+  payload,
+  say,
+  s3Client,
+  threadTs,
+}) => {
+  if (!config?.prefix || !config?.s3SourceFolder) {
+    await reply(say, {
+      threadTs,
+      text: getS3SyncConfigMissingMessage(),
+    });
+    return;
+  }
+
+  if (config.s3SourceFolder === config.prefix) {
+    await reply(say, {
+      threadTs,
+      text: 'A pasta S3 de origem e igual a pasta de destino deste canal. Configure uma pasta origem diferente.',
+    });
+    return;
+  }
+
+  let parsedSchedule;
+
+  try {
+    parsedSchedule = parseS3SchedulePayload(payload);
+  } catch (error) {
+    await reply(say, {
+      threadTs,
+      text: [
+        `Agenda invalida: ${error.message}`,
+        `Exemplo: \`${BOT_MENTION_LABEL} s3-sync-schedule [{"data":"14/08/2026","hora":"18:15:00"}]\``,
+      ].join('\n'),
+    });
+    return;
+  }
+
+  const { ignoredRuns, runs } = parsedSchedule;
+
+  if (runs.length === 0) {
+    await reply(say, {
+      threadTs,
+      text: [
+        'Nenhuma execucao valida encontrada na agenda.',
+        `Itens ignorados: ${ignoredRuns.length}`,
+      ].join('\n'),
+    });
+    return;
+  }
+
+  await saveChannelConfig(s3Client, channelId, {
+    channelName,
+    s3SyncSchedule: {
+      deleteExtra,
+      enabled: true,
+      ignoredRuns,
+      lastResult: null,
+      runs,
+      timezone: SCHEDULE_TIME_ZONE,
+    },
+  });
+
+  await reply(say, {
+    threadTs,
+    text: [
+      'Agenda S3 salva.',
+      `Origem: ${getS3Uri(`${config.s3SourceFolder}/data/`)}`,
+      `Destino: ${getS3Uri(`${config.prefix}/data/`)}`,
+      `Timezone: ${SCHEDULE_TIME_ZONE}`,
+      `Modo: ${deleteExtra ? 'espelhar com delete' : 'copiar novos/alterados'}`,
+      `Agendados: ${runs.length}`,
+      `Ignorados: ${ignoredRuns.length}`,
+      'Proximas execucoes:',
+      ...getScheduleLines(runs),
+    ].join('\n'),
   });
 };
 
@@ -1276,6 +1491,20 @@ export const createSlackApp = () => {
         return;
       }
 
+      if (command === 's3-sync-schedule') {
+        await handleSyncS3Schedule({
+          channelId: event.channel,
+          channelName,
+          config: savedConfig,
+          deleteExtra: args.includes('--delete'),
+          payload: getCommandPayload(event.text, command),
+          say,
+          s3Client,
+          threadTs,
+        });
+        return;
+      }
+
       if (!prefix) {
         await reply(say, {
           threadTs,
@@ -1540,6 +1769,104 @@ export const createSlackApp = () => {
               },
               lastRunAt: new Date().toISOString(),
               nextRunAt,
+            },
+          });
+        }
+      }
+
+      for (const [channelId, config] of Object.entries(configs)) {
+        const schedule = config.s3SyncSchedule;
+
+        if (!schedule?.enabled || !config.prefix || !config.s3SourceFolder) {
+          continue;
+        }
+
+        const pendingRunIndex = (schedule.runs || []).findIndex(
+          (run) => run.status === 'pending' && new Date(run.runAt).getTime() <= now,
+        );
+
+        if (pendingRunIndex < 0) {
+          continue;
+        }
+
+        const runs = [...schedule.runs];
+        const run = runs[pendingRunIndex];
+
+        try {
+          runs[pendingRunIndex] = {
+            ...run,
+            status: 'running',
+          };
+          await saveChannelConfig(s3Client, channelId, {
+            s3SyncSchedule: {
+              ...schedule,
+              runs,
+            },
+          });
+
+          const result = await syncS3DataFolder({
+            deleteExtra: Boolean(schedule.deleteExtra),
+            s3Client,
+            sourceFolder: config.s3SourceFolder,
+            targetFolder: config.prefix,
+          });
+          const changedCount =
+            result.createdFiles.length +
+            result.updatedFiles.length +
+            result.deletedFiles.length;
+          const executedAt = new Date().toISOString();
+
+          runs[pendingRunIndex] = {
+            ...run,
+            executedAt,
+            result: {
+              createdCount: result.createdFiles.length,
+              deletedCount: result.deletedFiles.length,
+              status: changedCount > 0 ? 'changed' : 'no_changes',
+              updatedCount: result.updatedFiles.length,
+            },
+            status: 'done',
+          };
+
+          await saveChannelConfig(s3Client, channelId, {
+            s3SyncSchedule: {
+              ...schedule,
+              lastResult: runs[pendingRunIndex].result,
+              lastRunAt: executedAt,
+              runs,
+            },
+          });
+
+          await app.client.chat.postMessage({
+            channel: channelId,
+            text: [
+              `Execucao agendada S3 concluida: ${run.label}`,
+              getSyncS3ResultMessage({
+                deleteExtra: Boolean(schedule.deleteExtra),
+                dryRun: false,
+                result,
+              }),
+            ].join('\n'),
+          });
+        } catch (error) {
+          console.error(`Erro no sync S3 agendado do canal ${channelId}:`, error);
+
+          runs[pendingRunIndex] = {
+            ...run,
+            error: error.message,
+            executedAt: new Date().toISOString(),
+            status: 'error',
+          };
+
+          await saveChannelConfig(s3Client, channelId, {
+            s3SyncSchedule: {
+              ...schedule,
+              lastResult: {
+                error: error.message,
+                status: 'error',
+              },
+              lastRunAt: runs[pendingRunIndex].executedAt,
+              runs,
             },
           });
         }

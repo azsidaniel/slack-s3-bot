@@ -54,6 +54,7 @@ Use mencionando o bot em uma thread.
 - `s3-sync-on <minutos> <duracao> --delete`: ativa sync automatico S3 espelhando `data/`.
 - `s3-sync-on`: reativa o sync automatico S3 com a configuracao anterior.
 - `s3-sync-off`: pausa sync automatico S3 e preserva a configuracao.
+- `s3-sync-schedule`: salva uma agenda JSON de datas/horas exatas para sync S3.
 
 ```text
 @info-s3 s3-list
@@ -65,6 +66,7 @@ Use mencionando o bot em uma thread.
 @info-s3 s3-sync-on 5 7d --delete
 @info-s3 s3-sync-on
 @info-s3 s3-sync-off
+@info-s3 s3-sync-schedule [{"data":"14/08/2026","hora":"18:15:00"}]
 ```
 
 ### Drive
@@ -131,6 +133,7 @@ pasta salva:
 @info-s3 s3-sync
 @info-s3 s3-sync-on 5 7d
 @info-s3 s3-sync-on
+@info-s3 s3-sync-schedule [{"data":"14/08/2026","hora":"18:15:00"}]
 @info-s3 drive-sync --dry-run
 @info-s3 drive-sync
 @info-s3 drive-sync-on 5 7d
@@ -175,6 +178,31 @@ Para pausar e reativar sem reiniciar a expiracao:
 @info-s3 s3-sync-off
 @info-s3 s3-sync-on
 ```
+
+Para agendar sync S3 em datas e horas exatas, cole um array JSON depois do
+comando. Datas usam `DD/MM/AAAA` e horas usam `HH:mm:ss` no fuso
+`America/Sao_Paulo`. Itens sem `hora` sao ignorados.
+
+```text
+@info-s3 s3-sync-schedule
+[
+  { "data": "14/08/2026", "hora": "18:15:00" },
+  { "data": "02/09/2026", "hora": "10:30:00" },
+  { "data": "03/10/2026", "hora": "" }
+]
+```
+
+Use `--delete` para salvar a agenda em modo espelhamento:
+
+```text
+@info-s3 s3-sync-schedule --delete
+[
+  { "data": "14/08/2026", "hora": "18:15:00" }
+]
+```
+
+Se o bot estiver indisponivel no horario exato e voltar depois, execucoes
+pendentes sao executadas assim que o scheduler rodar novamente.
 
 O sync automatico do Drive tambem e por canal. Exemplo:
 
