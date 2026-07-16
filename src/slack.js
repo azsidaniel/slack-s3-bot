@@ -16,6 +16,7 @@ import {
 import {
   assertBucketAccess,
   createS3Client,
+  getObjectBuffer,
   getS3Config,
   getS3Uri,
   listProjectObjects,
@@ -26,6 +27,7 @@ import { syncDriveFolderToS3 } from './syncDrive.js';
 const { App } = slackBolt;
 
 const COMMANDS = new Set([
+  'download-s3',
   'drive-list',
   'help',
   'list',
@@ -105,6 +107,7 @@ const getHelpMessage = () =>
     `\`${BOT_MENTION_LABEL} test\` - valida Slack, AWS e mostra a pasta S3 configurada para o canal.`,
     `\`${BOT_MENTION_LABEL} status\` - mostra a configuracao deste canal.`,
     `\`${BOT_MENTION_LABEL} list\` - lista arquivos da pasta S3 configurada.`,
+    `\`${BOT_MENTION_LABEL} download-s3 data/arquivo.txt\` - baixa um arquivo de data/ no S3 e anexa na thread.`,
     `\`${BOT_MENTION_LABEL} drive-list\` - lista arquivos da pasta Drive configurada.`,
     `\`${BOT_MENTION_LABEL} upload --dry-run\` - mostra para onde os anexos da thread seriam enviados.`,
     `\`${BOT_MENTION_LABEL} upload\` - envia os anexos da thread para a pasta S3 configurada.`,
@@ -129,6 +132,22 @@ const getUnconfiguredChannelMessage = (channelName) =>
     'Exemplo:',
     `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
   ].join('\n');
+
+const normalizeS3DataPath = (input = '') => {
+  const filePath = String(input).trim().replace(/^\/+/, '');
+
+  if (
+    !filePath ||
+    !filePath.startsWith('data/') ||
+    filePath.endsWith('/') ||
+    filePath.includes('..') ||
+    filePath.includes('\\')
+  ) {
+    return null;
+  }
+
+  return filePath;
+};
 
 const getChannelName = async (client, channelId) => {
   const result = await client.conversations.info({ channel: channelId });
@@ -392,6 +411,55 @@ const handleList = async ({ channelName, prefix, say, s3Client, threadTs }) => {
     threadTs,
     text: [`Arquivos em ${getS3Uri(`${prefix}/`)}:`, ...lines].join('\n') + suffix,
   });
+};
+
+const handleDownloadS3 = async ({
+  channelId,
+  client,
+  filePath,
+  prefix,
+  say,
+  s3Client,
+  threadTs,
+}) => {
+  const normalizedPath = normalizeS3DataPath(filePath);
+
+  if (!normalizedPath) {
+    await reply(say, {
+      threadTs,
+      text: [
+        'Informe o caminho completo de um arquivo dentro de `data/`.',
+        `Exemplo: \`${BOT_MENTION_LABEL} download-s3 data/arquivo.txt\``,
+      ].join('\n'),
+    });
+    return;
+  }
+
+  const key = `${prefix}/${normalizedPath}`;
+
+  try {
+    const { body } = await getObjectBuffer(s3Client, key);
+    const filename = getSafeFilename(normalizedPath);
+
+    await client.files.uploadV2({
+      channel_id: channelId,
+      file: body,
+      filename,
+      initial_comment: `Download de ${getS3Uri(key)}`,
+      thread_ts: threadTs,
+      title: filename,
+    });
+  } catch (error) {
+    if (['NoSuchKey', 'NotFound'].includes(error?.name)) {
+      await reply(say, {
+        threadTs,
+        text: `Arquivo nao encontrado no S3: ${getS3Uri(key)}`,
+      });
+      return;
+    }
+
+    throw error;
+  }
 };
 
 const getUnconfiguredDriveMessage = () =>
@@ -757,7 +825,7 @@ export const createSlackApp = () => {
     if (!COMMANDS.has(command)) {
       await reply(say, {
         threadTs,
-        text: 'Comando invalido. Use: help, test, status, list, drive-list, set-folder, set-drive-folder, upload, sync-drive, sync-drive-on ou sync-drive-off.',
+        text: 'Comando invalido. Use: help, test, status, list, download-s3, drive-list, set-folder, set-drive-folder, upload, sync-drive, sync-drive-on ou sync-drive-off.',
       });
       return;
     }
@@ -854,6 +922,19 @@ export const createSlackApp = () => {
 
       if (command === 'list') {
         await handleList({ channelName, prefix, say, s3Client, threadTs });
+        return;
+      }
+
+      if (command === 'download-s3') {
+        await handleDownloadS3({
+          channelId: event.channel,
+          client,
+          filePath: targetPrefix,
+          prefix,
+          say,
+          s3Client,
+          threadTs,
+        });
         return;
       }
 

@@ -85,6 +85,22 @@ export const getObjectText = async (s3Client, key) => {
   return result.Body.transformToString();
 };
 
+export const getObjectBuffer = async (s3Client, key) => {
+  const { bucket } = getS3Config();
+
+  const result = await s3Client.send(
+    new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    }),
+  );
+
+  return {
+    body: Buffer.from(await result.Body.transformToByteArray()),
+    contentType: result.ContentType,
+  };
+};
+
 export const putJsonObject = async (s3Client, { key, value }) => {
   const { acl, bucket, cacheControl } = getS3Config();
 

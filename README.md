@@ -24,6 +24,7 @@ Use mencionando o bot em uma thread:
 @info-s3 help
 @info-s3 status
 @info-s3 list
+@info-s3 download-s3 data/arquivo.txt
 @info-s3 drive-list
 @info-s3 set-folder nome-da-pasta
 @info-s3 set-drive-folder link-ou-id-da-pasta
@@ -40,6 +41,7 @@ Use mencionando o bot em uma thread:
 - `help`: lista todos os comandos e explica o uso.
 - `status`: mostra a configuracao geral do canal.
 - `list`: lista arquivos da pasta S3 configurada.
+- `download-s3 data/arquivo.txt`: baixa um arquivo de `data/` no S3 e anexa na thread.
 - `drive-list`: lista arquivos da pasta publica do Google Drive configurada.
 - `set-folder nome-da-pasta`: salva a pasta S3 que este canal deve usar.
 - `set-drive-folder link-ou-id-da-pasta`: salva a pasta publica do Google Drive usada como fonte.
@@ -78,6 +80,7 @@ pasta salva:
 
 ```text
 @info-s3 list
+@info-s3 download-s3 data/arquivo.txt
 @info-s3 upload --dry-run
 @info-s3 upload
 @info-s3 drive-list
@@ -164,6 +167,7 @@ channels:history
 channels:read
 chat:write
 files:read
+files:write
 groups:history
 groups:read
 ```
@@ -193,6 +197,7 @@ O usuario/role AWS precisa conseguir listar e escrever no bucket:
 
 ```text
 s3:HeadBucket
+s3:GetObject
 s3:ListBucket
 s3:PutObject
 ```
