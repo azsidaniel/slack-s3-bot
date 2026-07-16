@@ -30,20 +30,20 @@ import { syncS3DataFolder } from './syncS3Data.js';
 const { App } = slackBolt;
 
 const COMMANDS = new Set([
-  'download-s3',
+  's3-download',
   'drive-list',
   'help',
-  'list',
-  'set-drive-folder',
-  'set-folder',
-  'set-source-folder',
+  's3-list',
+  'set-drive-source-folder',
+  'set-s3-folder',
+  'set-s3-source-folder',
   'status',
-  'sync-drive',
-  'sync-drive-off',
-  'sync-drive-on',
-  'sync-s3',
+  'drive-sync',
+  'drive-sync-off',
+  'drive-sync-on',
+  's3-sync',
   'test',
-  'upload',
+  'slack-upload',
 ]);
 const BOT_MENTION_LABEL = '@info-s3';
 const MAX_SYNC_DURATION_DAYS = 60;
@@ -106,30 +106,42 @@ const parseCommand = (text) => {
 const getHelpMessage = () =>
   [
     'Comandos disponiveis:',
-    `\`${BOT_MENTION_LABEL} help\` - lista os comandos e o uso.`,
-    `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\` - salva a pasta S3 que este canal deve usar.`,
-    `\`${BOT_MENTION_LABEL} set-source-folder nome-da-pasta\` - salva a pasta S3 de origem para copiar data/.`,
-    `\`${BOT_MENTION_LABEL} set-drive-folder link-ou-id-da-pasta\` - salva a pasta publica do Google Drive que este canal deve usar como fonte.`,
-    `\`${BOT_MENTION_LABEL} test\` - valida Slack, AWS e mostra a pasta S3 configurada para o canal.`,
-    `\`${BOT_MENTION_LABEL} status\` - mostra a configuracao deste canal.`,
-    `\`${BOT_MENTION_LABEL} list\` - lista arquivos da pasta S3 configurada.`,
-    `\`${BOT_MENTION_LABEL} download-s3 data/arquivo.txt\` - baixa um arquivo de data/ no S3 e anexa na thread.`,
-    `\`${BOT_MENTION_LABEL} drive-list\` - lista arquivos da pasta Drive configurada.`,
-    `\`${BOT_MENTION_LABEL} upload --dry-run\` - mostra para onde os anexos da thread seriam enviados.`,
-    `\`${BOT_MENTION_LABEL} upload\` - envia os anexos da thread para a pasta S3 configurada.`,
-    `\`${BOT_MENTION_LABEL} sync-drive --dry-run\` - mostra quais arquivos do Drive seriam sincronizados no S3.`,
-    `\`${BOT_MENTION_LABEL} sync-drive\` - sincroniza a pasta Drive configurada para o S3.`,
-    `\`${BOT_MENTION_LABEL} sync-s3 --dry-run\` - mostra o sync de data/ entre pasta origem e destino no mesmo bucket.`,
-    `\`${BOT_MENTION_LABEL} sync-s3\` - copia novos/alterados de data/ da pasta origem para a pasta deste canal.`,
-    `\`${BOT_MENTION_LABEL} sync-s3 --delete\` - espelha data/ e remove do destino arquivos ausentes na origem.`,
-    `\`${BOT_MENTION_LABEL} sync-drive-on 5 7d\` - ativa sync automatico por canal, com expiracao obrigatoria.`,
-    `\`${BOT_MENTION_LABEL} sync-drive-on\` - reativa o sync automatico com a configuracao anterior, sem reiniciar a expiracao.`,
-    `\`${BOT_MENTION_LABEL} sync-drive-off\` - pausa o sync automatico neste canal, preservando a configuracao.`,
     '',
-    'Antes de usar `list`, `upload` ou `sync-drive`, configure a pasta S3 deste canal:',
-    `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
-    'Para usar Drive como fonte, configure tambem:',
-    `\`${BOT_MENTION_LABEL} set-drive-folder link-ou-id-da-pasta\``,
+    'Base:',
+    `\`${BOT_MENTION_LABEL} help\` - lista os comandos e o uso.`,
+    `\`${BOT_MENTION_LABEL} status\` - mostra a configuracao deste canal.`,
+    `\`${BOT_MENTION_LABEL} test\` - valida Slack, AWS e mostra a pasta S3 configurada para o canal.`,
+    '',
+    'Configuracao:',
+    `\`${BOT_MENTION_LABEL} set-s3-folder nome-da-pasta\` - salva a pasta S3 de destino deste canal.`,
+    `\`${BOT_MENTION_LABEL} set-s3-source-folder nome-da-pasta\` - salva a pasta S3 de origem para copiar data/.`,
+    `\`${BOT_MENTION_LABEL} set-drive-source-folder link-ou-id-da-pasta\` - salva a pasta publica do Google Drive usada como fonte.`,
+    '',
+    'S3:',
+    `\`${BOT_MENTION_LABEL} s3-list\` - lista arquivos da pasta S3 configurada.`,
+    `\`${BOT_MENTION_LABEL} s3-download data/arquivo.txt\` - baixa um arquivo de data/ no S3 e anexa na thread.`,
+    `\`${BOT_MENTION_LABEL} s3-sync --dry-run\` - mostra o sync de data/ entre pasta origem e destino no mesmo bucket.`,
+    `\`${BOT_MENTION_LABEL} s3-sync\` - copia novos/alterados de data/ da pasta origem para a pasta deste canal.`,
+    `\`${BOT_MENTION_LABEL} s3-sync --delete\` - espelha data/ e remove do destino arquivos ausentes na origem.`,
+    '',
+    'Drive:',
+    `\`${BOT_MENTION_LABEL} drive-list\` - lista arquivos da pasta Drive configurada.`,
+    `\`${BOT_MENTION_LABEL} drive-sync --dry-run\` - mostra quais arquivos do Drive seriam sincronizados no S3.`,
+    `\`${BOT_MENTION_LABEL} drive-sync\` - sincroniza a pasta Drive configurada para o S3.`,
+    `\`${BOT_MENTION_LABEL} drive-sync-on 5 7d\` - ativa sync automatico por canal, com expiracao obrigatoria.`,
+    `\`${BOT_MENTION_LABEL} drive-sync-on\` - reativa o sync automatico com a configuracao anterior, sem reiniciar a expiracao.`,
+    `\`${BOT_MENTION_LABEL} drive-sync-off\` - pausa o sync automatico neste canal, preservando a configuracao.`,
+    '',
+    'Slack:',
+    `\`${BOT_MENTION_LABEL} slack-upload --dry-run\` - mostra para onde os anexos da thread seriam enviados.`,
+    `\`${BOT_MENTION_LABEL} slack-upload\` - envia os anexos da thread para a pasta S3 configurada.`,
+    '',
+    'Antes de usar S3, Drive ou Slack upload, configure a pasta S3 de destino:',
+    `\`${BOT_MENTION_LABEL} set-s3-folder nome-da-pasta\``,
+    'Para usar Drive como fonte:',
+    `\`${BOT_MENTION_LABEL} set-drive-source-folder link-ou-id-da-pasta\``,
+    'Para usar S3 como fonte:',
+    `\`${BOT_MENTION_LABEL} set-s3-source-folder nome-da-pasta-origem\``,
   ].join('\n');
 
 const getUnconfiguredChannelMessage = (channelName) =>
@@ -137,9 +149,9 @@ const getUnconfiguredChannelMessage = (channelName) =>
     `Este canal ainda nao tem uma pasta S3 configurada.`,
     `Canal Slack: ${channelName}`,
     'Informe a pasta existente no S3 com:',
-    `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
+    `\`${BOT_MENTION_LABEL} set-s3-folder nome-da-pasta\``,
     'Exemplo:',
-    `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
+    `\`${BOT_MENTION_LABEL} set-s3-folder nome-da-pasta\``,
   ].join('\n');
 
 const normalizeS3DataPath = (input = '') => {
@@ -298,8 +310,8 @@ const getMissingPrefixMessage = ({ channelName, prefix }) =>
     `Nao encontrei arquivos na pasta S3: ${getS3Uri(`${prefix}/`)}`,
     `Canal Slack: ${channelName}`,
     'Se a pasta do S3 tiver outro nome, salve a pasta correta para este canal:',
-    `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
-    `Depois disso, \`${BOT_MENTION_LABEL} list\`, \`${BOT_MENTION_LABEL} upload --dry-run\` e \`${BOT_MENTION_LABEL} upload\` usarao essa pasta automaticamente.`,
+    `\`${BOT_MENTION_LABEL} set-s3-folder nome-da-pasta\``,
+    `Depois disso, \`${BOT_MENTION_LABEL} s3-list\`, \`${BOT_MENTION_LABEL} slack-upload --dry-run\` e \`${BOT_MENTION_LABEL} slack-upload\` usarao essa pasta automaticamente.`,
   ].join('\n');
 
 const handleSetFolder = async ({
@@ -313,7 +325,7 @@ const handleSetFolder = async ({
   if (!prefix) {
     await reply(say, {
       threadTs,
-      text: `Informe a pasta S3. Exemplo: \`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
+      text: `Informe a pasta S3. Exemplo: \`${BOT_MENTION_LABEL} set-s3-folder nome-da-pasta\``,
     });
     return;
   }
@@ -353,7 +365,7 @@ const handleSetSourceFolder = async ({
   if (!s3SourceFolder) {
     await reply(say, {
       threadTs,
-      text: `Informe a pasta S3 de origem. Exemplo: \`${BOT_MENTION_LABEL} set-source-folder nome-da-pasta-origem\``,
+      text: `Informe a pasta S3 de origem. Exemplo: \`${BOT_MENTION_LABEL} set-s3-source-folder nome-da-pasta-origem\``,
     });
     return;
   }
@@ -383,7 +395,7 @@ const handleSetSourceFolder = async ({
       `Pasta S3 de origem salva para este canal: ${s3SourceFolder}`,
       `Origem data/: ${getS3Uri(`${s3SourceFolder}/data/`)}`,
       `Arquivos encontrados agora: ${dataObjects.length}`,
-      `Use \`${BOT_MENTION_LABEL} sync-s3 --dry-run\` para conferir antes de copiar.`,
+      `Use \`${BOT_MENTION_LABEL} s3-sync --dry-run\` para conferir antes de copiar.`,
     ].join('\n'),
   });
 };
@@ -401,7 +413,7 @@ const handleSetDriveFolder = async ({
   if (!driveFolderId) {
     await reply(say, {
       threadTs,
-      text: `Informe a pasta do Google Drive. Exemplo: \`${BOT_MENTION_LABEL} set-drive-folder link-ou-id-da-pasta\``,
+      text: `Informe a pasta do Google Drive. Exemplo: \`${BOT_MENTION_LABEL} set-drive-source-folder link-ou-id-da-pasta\``,
     });
     return;
   }
@@ -426,7 +438,7 @@ const handleSetDriveFolder = async ({
     text: [
       `Pasta Drive salva para este canal: ${driveFolderId}`,
       `Arquivos encontrados agora: ${files.length}`,
-      `A partir de agora, \`${BOT_MENTION_LABEL} drive-list\` e \`${BOT_MENTION_LABEL} sync-drive\` usarao essa pasta como fonte.`,
+      `A partir de agora, \`${BOT_MENTION_LABEL} drive-list\` e \`${BOT_MENTION_LABEL} drive-sync\` usarao essa pasta como fonte.`,
     ].join('\n'),
   });
 };
@@ -512,7 +524,7 @@ const handleSyncS3 = async ({
       threadTs,
       text: [
         'Este canal ainda nao tem uma pasta S3 de origem configurada.',
-        `Configure com: \`${BOT_MENTION_LABEL} set-source-folder nome-da-pasta-origem\``,
+        `Configure com: \`${BOT_MENTION_LABEL} set-s3-source-folder nome-da-pasta-origem\``,
       ].join('\n'),
     });
     return;
@@ -582,7 +594,7 @@ const handleDownloadS3 = async ({
       threadTs,
       text: [
         'Informe o caminho completo de um arquivo dentro de `data/`.',
-        `Exemplo: \`${BOT_MENTION_LABEL} download-s3 data/arquivo.txt\``,
+        `Exemplo: \`${BOT_MENTION_LABEL} s3-download data/arquivo.txt\``,
       ].join('\n'),
     });
     return;
@@ -619,7 +631,7 @@ const getUnconfiguredDriveMessage = () =>
   [
     'Este canal ainda nao tem uma pasta do Google Drive configurada.',
     'Informe a pasta publica do Drive com:',
-    `\`${BOT_MENTION_LABEL} set-drive-folder link-ou-id-da-pasta\``,
+    `\`${BOT_MENTION_LABEL} set-drive-source-folder link-ou-id-da-pasta\``,
   ].join('\n');
 
 const getDriveFileLines = (files) =>
@@ -817,8 +829,8 @@ const handleSyncDriveOn = async ({
         threadTs,
         text: [
           'Configure S3 e Drive antes de reativar o sync automatico.',
-          `S3: \`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
-          `Drive: \`${BOT_MENTION_LABEL} set-drive-folder link-ou-id-da-pasta\``,
+          `S3: \`${BOT_MENTION_LABEL} set-s3-folder nome-da-pasta\``,
+          `Drive: \`${BOT_MENTION_LABEL} set-drive-source-folder link-ou-id-da-pasta\``,
         ].join('\n'),
       });
       return;
@@ -829,7 +841,7 @@ const handleSyncDriveOn = async ({
         threadTs,
         text: [
           'Nao existe uma configuracao anterior de sync automatico para este canal.',
-          `Crie uma nova com: \`${BOT_MENTION_LABEL} sync-drive-on 5 7d\``,
+          `Crie uma nova com: \`${BOT_MENTION_LABEL} drive-sync-on 5 7d\``,
         ].join('\n'),
       });
       return;
@@ -840,7 +852,7 @@ const handleSyncDriveOn = async ({
         threadTs,
         text: [
           `A configuracao anterior expirou em ${formatDateTime(sync.expiresAt)}.`,
-          `Crie uma nova com: \`${BOT_MENTION_LABEL} sync-drive-on 5 7d\``,
+          `Crie uma nova com: \`${BOT_MENTION_LABEL} drive-sync-on 5 7d\``,
         ].join('\n'),
       });
       return;
@@ -881,7 +893,7 @@ const handleSyncDriveOn = async ({
       threadTs,
       text: [
         error,
-        `Exemplo: \`${BOT_MENTION_LABEL} sync-drive-on 5 7d\``,
+        `Exemplo: \`${BOT_MENTION_LABEL} drive-sync-on 5 7d\``,
       ].join('\n'),
     });
     return;
@@ -892,8 +904,8 @@ const handleSyncDriveOn = async ({
       threadTs,
       text: [
         'Configure S3 e Drive antes de ativar o sync automatico.',
-        `S3: \`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
-        `Drive: \`${BOT_MENTION_LABEL} set-drive-folder link-ou-id-da-pasta\``,
+        `S3: \`${BOT_MENTION_LABEL} set-s3-folder nome-da-pasta\``,
+        `Drive: \`${BOT_MENTION_LABEL} set-drive-source-folder link-ou-id-da-pasta\``,
       ].join('\n'),
     });
     return;
@@ -978,7 +990,7 @@ export const createSlackApp = () => {
     if (!COMMANDS.has(command)) {
       await reply(say, {
         threadTs,
-        text: 'Comando invalido. Use: help, test, status, list, download-s3, drive-list, set-folder, set-source-folder, set-drive-folder, upload, sync-drive, sync-s3, sync-drive-on ou sync-drive-off.',
+        text: 'Comando invalido. Use `@info-s3 help` para ver os comandos disponiveis.',
       });
       return;
     }
@@ -996,10 +1008,10 @@ export const createSlackApp = () => {
       const savedConfig = await getSavedPrefix(s3Client, event.channel);
       const savedPrefix = savedConfig?.prefix;
       const driveFolderId = savedConfig?.driveFolderId;
-      const usesExplicitPrefix = ['list', 'test', 'upload'].includes(command);
+      const usesExplicitPrefix = ['s3-list', 'test', 'slack-upload'].includes(command);
       const prefix = usesExplicitPrefix ? targetPrefix || savedPrefix : savedPrefix;
 
-      if (command === 'set-folder') {
+      if (command === 'set-s3-folder') {
         await handleSetFolder({
           channelId: event.channel,
           channelName,
@@ -1011,7 +1023,7 @@ export const createSlackApp = () => {
         return;
       }
 
-      if (command === 'set-drive-folder') {
+      if (command === 'set-drive-source-folder') {
         await handleSetDriveFolder({
           channelId: event.channel,
           channelName,
@@ -1023,7 +1035,7 @@ export const createSlackApp = () => {
         return;
       }
 
-      if (command === 'set-source-folder') {
+      if (command === 'set-s3-source-folder') {
         await handleSetSourceFolder({
           channelId: event.channel,
           channelName,
@@ -1048,7 +1060,7 @@ export const createSlackApp = () => {
         return;
       }
 
-      if (command === 'sync-drive-off') {
+      if (command === 'drive-sync-off') {
         await handleSyncDriveOff({
           channelId: event.channel,
           config: savedConfig,
@@ -1059,7 +1071,7 @@ export const createSlackApp = () => {
         return;
       }
 
-      if (command === 'sync-drive-on') {
+      if (command === 'drive-sync-on') {
         await handleSyncDriveOn({
           args,
           channelId: event.channel,
@@ -1085,12 +1097,12 @@ export const createSlackApp = () => {
         return;
       }
 
-      if (command === 'list') {
+      if (command === 's3-list') {
         await handleList({ channelName, prefix, say, s3Client, threadTs });
         return;
       }
 
-      if (command === 'download-s3') {
+      if (command === 's3-download') {
         await handleDownloadS3({
           channelId: event.channel,
           client,
@@ -1103,7 +1115,7 @@ export const createSlackApp = () => {
         return;
       }
 
-      if (command === 'sync-drive') {
+      if (command === 'drive-sync') {
         await handleSyncDrive({
           channelId: event.channel,
           config: savedConfig,
@@ -1116,7 +1128,7 @@ export const createSlackApp = () => {
         return;
       }
 
-      if (command === 'sync-s3') {
+      if (command === 's3-sync') {
         await handleSyncS3({
           config: savedConfig,
           deleteExtra: args.includes('--delete'),
@@ -1170,7 +1182,7 @@ export const createSlackApp = () => {
         `Ola! Obrigado por me adicionar ao canal #${channelName}.`,
         'Eu ajudo a publicar arquivos no S3. Posso subir anexos de threads do Slack ou arquivos de uma pasta publica do Google Drive.',
         'Para comecar, configure a pasta S3 de destino deste canal:',
-        `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\``,
+        `\`${BOT_MENTION_LABEL} set-s3-folder nome-da-pasta\``,
         `Depois veja todos os comandos com \`${BOT_MENTION_LABEL} help\`.`,
       ].join('\n'),
     });
