@@ -27,9 +27,13 @@ Use mencionando o bot em uma thread:
 @info-s3 download-s3 data/arquivo.txt
 @info-s3 drive-list
 @info-s3 set-folder nome-da-pasta
+@info-s3 set-source-folder nome-da-pasta-origem
 @info-s3 set-drive-folder link-ou-id-da-pasta
 @info-s3 upload --dry-run
 @info-s3 upload
+@info-s3 sync-s3 --dry-run
+@info-s3 sync-s3
+@info-s3 sync-s3 --delete
 @info-s3 sync-drive --dry-run
 @info-s3 sync-drive
 @info-s3 sync-drive-on 5 7d
@@ -44,9 +48,13 @@ Use mencionando o bot em uma thread:
 - `download-s3 data/arquivo.txt`: baixa um arquivo de `data/` no S3 e anexa na thread.
 - `drive-list`: lista arquivos da pasta publica do Google Drive configurada.
 - `set-folder nome-da-pasta`: salva a pasta S3 que este canal deve usar.
+- `set-source-folder nome-da-pasta-origem`: salva a pasta S3 de origem para copiar `data/`.
 - `set-drive-folder link-ou-id-da-pasta`: salva a pasta publica do Google Drive usada como fonte.
 - `upload --dry-run`: mostra para onde os anexos da thread seriam enviados.
 - `upload`: baixa os anexos da thread e envia para o S3.
+- `sync-s3 --dry-run`: mostra a copia de `data/` entre pasta origem e destino no mesmo bucket.
+- `sync-s3`: copia arquivos novos/alterados de `data/` da pasta origem para a pasta do canal.
+- `sync-s3 --delete`: espelha `data/` e remove do destino arquivos ausentes na origem.
 - `sync-drive --dry-run`: mostra quais arquivos do Drive seriam sincronizados no S3.
 - `sync-drive`: sincroniza manualmente a pasta Drive configurada para o S3.
 - `sync-drive-on <minutos> <duracao>`: ativa sync automatico com expiracao obrigatoria.
@@ -84,6 +92,8 @@ pasta salva:
 @info-s3 upload --dry-run
 @info-s3 upload
 @info-s3 drive-list
+@info-s3 sync-s3 --dry-run
+@info-s3 sync-s3
 @info-s3 sync-drive --dry-run
 @info-s3 sync-drive
 @info-s3 sync-drive-on 5 7d
@@ -93,6 +103,22 @@ pasta salva:
 
 Esse mapeamento fica salvo localmente em `data/channel-prefixes.json`.
 Em AWS, use `PREFIX_STORE=s3` para salvar o mapeamento no proprio bucket.
+
+Para copiar arquivos `data/` de outra pasta do mesmo bucket para a pasta deste
+canal:
+
+```text
+@info-s3 set-source-folder nome-da-pasta-origem
+@info-s3 sync-s3 --dry-run
+@info-s3 sync-s3
+```
+
+Use `--delete` apenas quando quiser espelhar completamente `data/`, removendo do
+destino arquivos que nao existem mais na origem:
+
+```text
+@info-s3 sync-s3 --delete
+```
 
 O sync automatico e por canal. Exemplo:
 
@@ -200,9 +226,11 @@ s3:HeadBucket
 s3:GetObject
 s3:ListBucket
 s3:PutObject
+s3:DeleteObject
 ```
 
-Se `S3_ACL=public-read`, tambem precisa de permissao para aplicar ACL.
+`s3:DeleteObject` so e necessario para `sync-s3 --delete`. Se
+`S3_ACL=public-read`, tambem precisa de permissao para aplicar ACL.
 
 ## Google Drive
 

@@ -7,6 +7,7 @@ import {
   saveChannelConfig,
   saveDriveFolder,
   savePrefix,
+  saveS3SourceFolder,
 } from './channelPrefixes.js';
 import {
   extractDriveFolderId,
@@ -19,10 +20,12 @@ import {
   getObjectBuffer,
   getS3Config,
   getS3Uri,
+  listObjectsByPrefix,
   listProjectObjects,
   uploadObject,
 } from './s3.js';
 import { syncDriveFolderToS3 } from './syncDrive.js';
+import { syncS3DataFolder } from './syncS3Data.js';
 
 const { App } = slackBolt;
 
@@ -33,10 +36,12 @@ const COMMANDS = new Set([
   'list',
   'set-drive-folder',
   'set-folder',
+  'set-source-folder',
   'status',
   'sync-drive',
   'sync-drive-off',
   'sync-drive-on',
+  'sync-s3',
   'test',
   'upload',
 ]);
@@ -103,6 +108,7 @@ const getHelpMessage = () =>
     'Comandos disponiveis:',
     `\`${BOT_MENTION_LABEL} help\` - lista os comandos e o uso.`,
     `\`${BOT_MENTION_LABEL} set-folder nome-da-pasta\` - salva a pasta S3 que este canal deve usar.`,
+    `\`${BOT_MENTION_LABEL} set-source-folder nome-da-pasta\` - salva a pasta S3 de origem para copiar data/.`,
     `\`${BOT_MENTION_LABEL} set-drive-folder link-ou-id-da-pasta\` - salva a pasta publica do Google Drive que este canal deve usar como fonte.`,
     `\`${BOT_MENTION_LABEL} test\` - valida Slack, AWS e mostra a pasta S3 configurada para o canal.`,
     `\`${BOT_MENTION_LABEL} status\` - mostra a configuracao deste canal.`,
@@ -113,6 +119,9 @@ const getHelpMessage = () =>
     `\`${BOT_MENTION_LABEL} upload\` - envia os anexos da thread para a pasta S3 configurada.`,
     `\`${BOT_MENTION_LABEL} sync-drive --dry-run\` - mostra quais arquivos do Drive seriam sincronizados no S3.`,
     `\`${BOT_MENTION_LABEL} sync-drive\` - sincroniza a pasta Drive configurada para o S3.`,
+    `\`${BOT_MENTION_LABEL} sync-s3 --dry-run\` - mostra o sync de data/ entre pasta origem e destino no mesmo bucket.`,
+    `\`${BOT_MENTION_LABEL} sync-s3\` - copia novos/alterados de data/ da pasta origem para a pasta deste canal.`,
+    `\`${BOT_MENTION_LABEL} sync-s3 --delete\` - espelha data/ e remove do destino arquivos ausentes na origem.`,
     `\`${BOT_MENTION_LABEL} sync-drive-on 5 7d\` - ativa sync automatico por canal, com expiracao obrigatoria.`,
     `\`${BOT_MENTION_LABEL} sync-drive-on\` - reativa o sync automatico com a configuracao anterior, sem reiniciar a expiracao.`,
     `\`${BOT_MENTION_LABEL} sync-drive-off\` - pausa o sync automatico neste canal, preservando a configuracao.`,
@@ -147,6 +156,28 @@ const normalizeS3DataPath = (input = '') => {
   }
 
   return filePath;
+};
+
+const normalizeS3FolderName = (input = '') => {
+  const folder = String(input).trim().replace(/^\/+|\/+$/g, '');
+
+  if (!folder || folder.includes('..') || folder.includes('\\')) {
+    return null;
+  }
+
+  return folder;
+};
+
+const formatFileList = (files, formatter, limit = 20) => {
+  const visibleFiles = files.slice(0, limit);
+  const lines = visibleFiles.map(formatter);
+  const extraCount = files.length - visibleFiles.length;
+
+  if (extraCount > 0) {
+    lines.push(`...mais ${extraCount} arquivo(s).`);
+  }
+
+  return lines;
 };
 
 const getChannelName = async (client, channelId) => {
@@ -309,6 +340,54 @@ const handleSetFolder = async ({
   });
 };
 
+const handleSetSourceFolder = async ({
+  channelId,
+  channelName,
+  say,
+  s3Client,
+  sourceFolder,
+  threadTs,
+}) => {
+  const s3SourceFolder = normalizeS3FolderName(sourceFolder);
+
+  if (!s3SourceFolder) {
+    await reply(say, {
+      threadTs,
+      text: `Informe a pasta S3 de origem. Exemplo: \`${BOT_MENTION_LABEL} set-source-folder nome-da-pasta-origem\``,
+    });
+    return;
+  }
+
+  const dataObjects = await listObjectsByPrefix(s3Client, `${s3SourceFolder}/data/`);
+
+  if (dataObjects.length === 0) {
+    await reply(say, {
+      threadTs,
+      text: [
+        `Nao encontrei arquivos em ${getS3Uri(`${s3SourceFolder}/data/`)}`,
+        'Confirme se a pasta origem esta correta e se ela possui arquivos em data/.',
+      ].join('\n'),
+    });
+    return;
+  }
+
+  await saveS3SourceFolder(s3Client, {
+    channelId,
+    channelName,
+    s3SourceFolder,
+  });
+
+  await reply(say, {
+    threadTs,
+    text: [
+      `Pasta S3 de origem salva para este canal: ${s3SourceFolder}`,
+      `Origem data/: ${getS3Uri(`${s3SourceFolder}/data/`)}`,
+      `Arquivos encontrados agora: ${dataObjects.length}`,
+      `Use \`${BOT_MENTION_LABEL} sync-s3 --dry-run\` para conferir antes de copiar.`,
+    ].join('\n'),
+  });
+};
+
 const handleSetDriveFolder = async ({
   channelId,
   channelName,
@@ -379,12 +458,86 @@ const getChannelStatusMessage = ({ channelName, config }) => {
   return [
     `Status do canal #${channelName}:`,
     `S3: ${config?.prefix || 'nao configurado'}`,
+    `S3 origem: ${config?.s3SourceFolder || 'nao configurado'}`,
     `Drive: ${config?.driveFolderId || 'nao configurado'}`,
     `Sync automatico: ${syncStatus}`,
     `Ultima sync: ${formatDateTime(sync?.lastRunAt)}`,
     `Proxima sync: ${formatDateTime(sync?.nextRunAt)}`,
     `Ultimo resultado: ${sync?.lastResult?.status || 'sem execucao'}`,
   ].join('\n');
+};
+
+const getSyncS3ResultMessage = ({ deleteExtra, dryRun, result }) => {
+  const header = dryRun
+    ? 'Dry-run S3 data -> S3 data: nenhum arquivo foi alterado.'
+    : 'Sync S3 data -> S3 data concluido.';
+  const createdLines = formatFileList(
+    result.createdFiles,
+    (file) => `- Novo: ${file.relativeKey} -> ${file.targetUri}`,
+  );
+  const updatedLines = formatFileList(
+    result.updatedFiles,
+    (file) => `- Atualizado: ${file.relativeKey} -> ${file.targetUri}`,
+  );
+  const deletedLines = formatFileList(
+    result.deletedFiles,
+    (file) => `- Removido: ${file.relativeKey} (${file.targetUri})`,
+  );
+
+  return [
+    header,
+    `Origem: ${getS3Uri(result.sourcePrefix)}`,
+    `Destino: ${getS3Uri(result.targetPrefix)}`,
+    `Novos: ${result.createdFiles.length}`,
+    `Alterados: ${result.updatedFiles.length}`,
+    `Iguais: ${result.unchangedFiles.length}`,
+    `A remover: ${result.deletedFiles.length}${deleteExtra ? '' : ' (--delete nao usado)'}`,
+    ...createdLines,
+    ...updatedLines,
+    ...deletedLines,
+  ].join('\n');
+};
+
+const handleSyncS3 = async ({
+  config,
+  deleteExtra,
+  dryRun,
+  prefix,
+  say,
+  s3Client,
+  threadTs,
+}) => {
+  if (!config?.s3SourceFolder) {
+    await reply(say, {
+      threadTs,
+      text: [
+        'Este canal ainda nao tem uma pasta S3 de origem configurada.',
+        `Configure com: \`${BOT_MENTION_LABEL} set-source-folder nome-da-pasta-origem\``,
+      ].join('\n'),
+    });
+    return;
+  }
+
+  if (config.s3SourceFolder === prefix) {
+    await reply(say, {
+      threadTs,
+      text: 'A pasta S3 de origem e igual a pasta de destino deste canal. Configure uma pasta origem diferente.',
+    });
+    return;
+  }
+
+  const result = await syncS3DataFolder({
+    deleteExtra,
+    dryRun,
+    s3Client,
+    sourceFolder: config.s3SourceFolder,
+    targetFolder: prefix,
+  });
+
+  await reply(say, {
+    threadTs,
+    text: getSyncS3ResultMessage({ deleteExtra, dryRun, result }),
+  });
 };
 
 const handleList = async ({ channelName, prefix, say, s3Client, threadTs }) => {
@@ -825,7 +978,7 @@ export const createSlackApp = () => {
     if (!COMMANDS.has(command)) {
       await reply(say, {
         threadTs,
-        text: 'Comando invalido. Use: help, test, status, list, download-s3, drive-list, set-folder, set-drive-folder, upload, sync-drive, sync-drive-on ou sync-drive-off.',
+        text: 'Comando invalido. Use: help, test, status, list, download-s3, drive-list, set-folder, set-source-folder, set-drive-folder, upload, sync-drive, sync-s3, sync-drive-on ou sync-drive-off.',
       });
       return;
     }
@@ -865,6 +1018,18 @@ export const createSlackApp = () => {
           driveFolderInput: targetPrefix,
           say,
           s3Client,
+          threadTs,
+        });
+        return;
+      }
+
+      if (command === 'set-source-folder') {
+        await handleSetSourceFolder({
+          channelId: event.channel,
+          channelName,
+          say,
+          s3Client,
+          sourceFolder: targetPrefix,
           threadTs,
         });
         return;
@@ -943,6 +1108,19 @@ export const createSlackApp = () => {
           channelId: event.channel,
           config: savedConfig,
           isDryRun,
+          prefix,
+          say,
+          s3Client,
+          threadTs,
+        });
+        return;
+      }
+
+      if (command === 'sync-s3') {
+        await handleSyncS3({
+          config: savedConfig,
+          deleteExtra: args.includes('--delete'),
+          dryRun: isDryRun,
           prefix,
           say,
           s3Client,

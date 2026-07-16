@@ -1,4 +1,6 @@
 import {
+  CopyObjectCommand,
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadBucketCommand,
   ListObjectsV2Command,
@@ -38,6 +40,11 @@ export const assertBucketAccess = async (s3Client) => {
 export const listProjectObjects = async (s3Client, channelName) => {
   const { bucket } = getS3Config();
   const prefix = `${channelName}/`;
+  return listObjectsByPrefix(s3Client, prefix);
+};
+
+export const listObjectsByPrefix = async (s3Client, prefix) => {
+  const { bucket } = getS3Config();
   const objects = [];
   let ContinuationToken;
 
@@ -55,6 +62,31 @@ export const listProjectObjects = async (s3Client, channelName) => {
   } while (ContinuationToken);
 
   return objects;
+};
+
+export const copyObject = async (s3Client, { destinationKey, sourceKey }) => {
+  const { acl, bucket } = getS3Config();
+
+  await s3Client.send(
+    new CopyObjectCommand({
+      ACL: acl,
+      Bucket: bucket,
+      CopySource: `${bucket}/${encodeURIComponent(sourceKey).replace(/%2F/g, '/')}`,
+      Key: destinationKey,
+      MetadataDirective: 'COPY',
+    }),
+  );
+};
+
+export const deleteObject = async (s3Client, key) => {
+  const { bucket } = getS3Config();
+
+  await s3Client.send(
+    new DeleteObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    }),
+  );
 };
 
 export const uploadObject = async (s3Client, { body, contentType, key }) => {
