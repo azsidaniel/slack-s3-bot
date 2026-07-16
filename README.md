@@ -50,6 +50,10 @@ Use mencionando o bot em uma thread.
 - `s3-sync --dry-run`: mostra o sync de `data/` entre pasta origem e destino no mesmo bucket.
 - `s3-sync`: copia novos/alterados de `data/` da pasta origem para a pasta deste canal.
 - `s3-sync --delete`: espelha `data/` e remove do destino arquivos ausentes na origem.
+- `s3-sync-on <minutos> <duracao>`: ativa sync automatico S3 com expiracao obrigatoria.
+- `s3-sync-on <minutos> <duracao> --delete`: ativa sync automatico S3 espelhando `data/`.
+- `s3-sync-on`: reativa o sync automatico S3 com a configuracao anterior.
+- `s3-sync-off`: pausa sync automatico S3 e preserva a configuracao.
 
 ```text
 @info-s3 s3-list
@@ -57,6 +61,10 @@ Use mencionando o bot em uma thread.
 @info-s3 s3-sync --dry-run
 @info-s3 s3-sync
 @info-s3 s3-sync --delete
+@info-s3 s3-sync-on 5 7d
+@info-s3 s3-sync-on 5 7d --delete
+@info-s3 s3-sync-on
+@info-s3 s3-sync-off
 ```
 
 ### Drive
@@ -121,6 +129,8 @@ pasta salva:
 @info-s3 drive-list
 @info-s3 s3-sync --dry-run
 @info-s3 s3-sync
+@info-s3 s3-sync-on 5 7d
+@info-s3 s3-sync-on
 @info-s3 drive-sync --dry-run
 @info-s3 drive-sync
 @info-s3 drive-sync-on 5 7d
@@ -147,7 +157,26 @@ destino arquivos que nao existem mais na origem:
 @info-s3 s3-sync --delete
 ```
 
-O sync automatico e por canal. Exemplo:
+Para ativar sync automatico S3, use:
+
+```text
+@info-s3 s3-sync-on 5 7d
+```
+
+Para ativar sync automatico S3 espelhando `data/` com remocao no destino:
+
+```text
+@info-s3 s3-sync-on 5 7d --delete
+```
+
+Para pausar e reativar sem reiniciar a expiracao:
+
+```text
+@info-s3 s3-sync-off
+@info-s3 s3-sync-on
+```
+
+O sync automatico do Drive tambem e por canal. Exemplo:
 
 ```text
 @info-s3 drive-sync-on 5 7d

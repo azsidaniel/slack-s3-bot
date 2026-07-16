@@ -42,6 +42,8 @@ const COMMANDS = new Set([
   'drive-sync-off',
   'drive-sync-on',
   's3-sync',
+  's3-sync-off',
+  's3-sync-on',
   'test',
   'slack-upload',
 ]);
@@ -123,6 +125,10 @@ const getHelpMessage = () =>
     `\`${BOT_MENTION_LABEL} s3-sync --dry-run\` - mostra o sync de data/ entre pasta origem e destino no mesmo bucket.`,
     `\`${BOT_MENTION_LABEL} s3-sync\` - copia novos/alterados de data/ da pasta origem para a pasta deste canal.`,
     `\`${BOT_MENTION_LABEL} s3-sync --delete\` - espelha data/ e remove do destino arquivos ausentes na origem.`,
+    `\`${BOT_MENTION_LABEL} s3-sync-on 5 7d\` - ativa sync automatico S3 por canal.`,
+    `\`${BOT_MENTION_LABEL} s3-sync-on 5 7d --delete\` - ativa sync automatico S3 espelhando data/.`,
+    `\`${BOT_MENTION_LABEL} s3-sync-on\` - reativa o sync automatico S3 com a configuracao anterior.`,
+    `\`${BOT_MENTION_LABEL} s3-sync-off\` - pausa o sync automatico S3, preservando a configuracao.`,
     '',
     'Drive:',
     `\`${BOT_MENTION_LABEL} drive-list\` - lista arquivos da pasta Drive configurada.`,
@@ -462,9 +468,14 @@ const handleTest = async ({ channelName, prefix, say, s3Client, threadTs }) => {
 };
 
 const getChannelStatusMessage = ({ channelName, config }) => {
-  const sync = config?.driveSync;
-  const syncStatus = sync?.enabled
-    ? `ativo, a cada ${sync.intervalMinutes} minuto(s), expira em ${formatDateTime(sync.expiresAt)}`
+  const driveSync = config?.driveSync;
+  const s3Sync = config?.s3Sync;
+  const driveSyncStatus = driveSync?.enabled
+    ? `ativo, a cada ${driveSync.intervalMinutes} minuto(s), expira em ${formatDateTime(driveSync.expiresAt)}`
+    : 'desativado';
+  const s3SyncMode = s3Sync?.deleteExtra ? 'espelhar com delete' : 'copiar novos/alterados';
+  const s3SyncStatus = s3Sync?.enabled
+    ? `ativo, a cada ${s3Sync.intervalMinutes} minuto(s), expira em ${formatDateTime(s3Sync.expiresAt)}, modo: ${s3SyncMode}`
     : 'desativado';
 
   return [
@@ -472,10 +483,14 @@ const getChannelStatusMessage = ({ channelName, config }) => {
     `S3: ${config?.prefix || 'nao configurado'}`,
     `S3 origem: ${config?.s3SourceFolder || 'nao configurado'}`,
     `Drive: ${config?.driveFolderId || 'nao configurado'}`,
-    `Sync automatico: ${syncStatus}`,
-    `Ultima sync: ${formatDateTime(sync?.lastRunAt)}`,
-    `Proxima sync: ${formatDateTime(sync?.nextRunAt)}`,
-    `Ultimo resultado: ${sync?.lastResult?.status || 'sem execucao'}`,
+    `Drive sync automatico: ${driveSyncStatus}`,
+    `Drive ultima sync: ${formatDateTime(driveSync?.lastRunAt)}`,
+    `Drive proxima sync: ${formatDateTime(driveSync?.nextRunAt)}`,
+    `Drive ultimo resultado: ${driveSync?.lastResult?.status || 'sem execucao'}`,
+    `S3 sync automatico: ${s3SyncStatus}`,
+    `S3 ultima sync: ${formatDateTime(s3Sync?.lastRunAt)}`,
+    `S3 proxima sync: ${formatDateTime(s3Sync?.nextRunAt)}`,
+    `S3 ultimo resultado: ${s3Sync?.lastResult?.status || 'sem execucao'}`,
   ].join('\n');
 };
 
@@ -549,6 +564,159 @@ const handleSyncS3 = async ({
   await reply(say, {
     threadTs,
     text: getSyncS3ResultMessage({ deleteExtra, dryRun, result }),
+  });
+};
+
+const getS3SyncConfigMissingMessage = () =>
+  [
+    'Configure a pasta S3 de destino e a pasta S3 de origem antes de ativar o sync automatico S3.',
+    `Destino: \`${BOT_MENTION_LABEL} set-s3-folder nome-da-pasta\``,
+    `Origem: \`${BOT_MENTION_LABEL} set-s3-source-folder nome-da-pasta-origem\``,
+  ].join('\n');
+
+const handleSyncS3On = async ({
+  args,
+  channelId,
+  channelName,
+  config,
+  say,
+  s3Client,
+  threadTs,
+}) => {
+  const syncArgs = args.filter((arg) => !arg.startsWith('--'));
+  const deleteExtra = args.includes('--delete');
+
+  if (!config?.prefix || !config?.s3SourceFolder) {
+    await reply(say, {
+      threadTs,
+      text: getS3SyncConfigMissingMessage(),
+    });
+    return;
+  }
+
+  if (config.s3SourceFolder === config.prefix) {
+    await reply(say, {
+      threadTs,
+      text: 'A pasta S3 de origem e igual a pasta de destino deste canal. Configure uma pasta origem diferente.',
+    });
+    return;
+  }
+
+  if (syncArgs.length === 0) {
+    const sync = config?.s3Sync;
+
+    if (!sync?.intervalMinutes || !sync?.expiresAt) {
+      await reply(say, {
+        threadTs,
+        text: [
+          'Nao existe uma configuracao anterior de sync automatico S3 para este canal.',
+          `Crie uma nova com: \`${BOT_MENTION_LABEL} s3-sync-on 5 7d\``,
+        ].join('\n'),
+      });
+      return;
+    }
+
+    if (new Date(sync.expiresAt).getTime() <= Date.now()) {
+      await reply(say, {
+        threadTs,
+        text: [
+          `A configuracao anterior expirou em ${formatDateTime(sync.expiresAt)}.`,
+          `Crie uma nova com: \`${BOT_MENTION_LABEL} s3-sync-on 5 7d\``,
+        ].join('\n'),
+      });
+      return;
+    }
+
+    const nextRunAt = new Date(
+      Date.now() + sync.intervalMinutes * 60 * 1000,
+    ).toISOString();
+
+    await saveChannelConfig(s3Client, channelId, {
+      channelName,
+      s3Sync: {
+        ...sync,
+        enabled: true,
+        nextRunAt,
+      },
+    });
+
+    await reply(say, {
+      threadTs,
+      text: [
+        'Sync automatico S3 reativado com a configuracao anterior.',
+        `Intervalo: ${sync.intervalMinutes} minuto(s)`,
+        `Modo: ${sync.deleteExtra ? 'espelhar com delete' : 'copiar novos/alterados'}`,
+        `Expira em: ${formatDateTime(sync.expiresAt)}`,
+        `Proxima execucao: ${formatDateTime(nextRunAt)}`,
+      ].join('\n'),
+    });
+    return;
+  }
+
+  const [intervalArg, durationArg] = syncArgs;
+  const intervalMinutes = Number(intervalArg);
+  const durationMs = parseDurationMs(durationArg);
+  const error = getSyncConfigError({ durationMs, intervalMinutes });
+
+  if (error) {
+    await reply(say, {
+      threadTs,
+      text: [
+        error,
+        `Exemplo: \`${BOT_MENTION_LABEL} s3-sync-on 5 7d\``,
+      ].join('\n'),
+    });
+    return;
+  }
+
+  const now = Date.now();
+  const nextRunAt = new Date(now + intervalMinutes * 60 * 1000).toISOString();
+  const expiresAt = new Date(now + durationMs).toISOString();
+
+  await saveChannelConfig(s3Client, channelId, {
+    channelName,
+    s3Sync: {
+      ...(config.s3Sync || {}),
+      deleteExtra,
+      enabled: true,
+      expiresAt,
+      intervalMinutes,
+      nextRunAt,
+      notify: 'changes',
+    },
+  });
+
+  await reply(say, {
+    threadTs,
+    text: [
+      'Sync automatico S3 ativado.',
+      `Intervalo: ${intervalMinutes} minuto(s)`,
+      `Modo: ${deleteExtra ? 'espelhar com delete' : 'copiar novos/alterados'}`,
+      `Expira em: ${formatDateTime(expiresAt)}`,
+      `Proxima execucao: ${formatDateTime(nextRunAt)}`,
+      'O bot so notificara este canal quando houver arquivos criados, alterados ou removidos.',
+    ].join('\n'),
+  });
+};
+
+const handleSyncS3Off = async ({
+  channelId,
+  config,
+  say,
+  s3Client,
+  threadTs,
+}) => {
+  await saveChannelConfig(s3Client, channelId, {
+    s3Sync: {
+      ...(config?.s3Sync || {}),
+      enabled: false,
+      nextRunAt: null,
+    },
+  });
+
+  await reply(say, {
+    threadTs,
+    text: 'Sync automatico S3 pausado para este canal. A configuracao anterior foi preservada.',
   });
 };
 
@@ -1084,6 +1252,30 @@ export const createSlackApp = () => {
         return;
       }
 
+      if (command === 's3-sync-off') {
+        await handleSyncS3Off({
+          channelId: event.channel,
+          config: savedConfig,
+          say,
+          s3Client,
+          threadTs,
+        });
+        return;
+      }
+
+      if (command === 's3-sync-on') {
+        await handleSyncS3On({
+          args,
+          channelId: event.channel,
+          channelName,
+          config: savedConfig,
+          say,
+          s3Client,
+          threadTs,
+        });
+        return;
+      }
+
       if (!prefix) {
         await reply(say, {
           threadTs,
@@ -1188,7 +1380,7 @@ export const createSlackApp = () => {
     });
   });
 
-  const runDueDriveSyncs = async () => {
+  const runDueSyncs = async () => {
     if (isSyncSchedulerRunning) {
       return;
     }
@@ -1268,15 +1460,99 @@ export const createSlackApp = () => {
           });
         }
       }
+
+      for (const [channelId, config] of Object.entries(configs)) {
+        const sync = config.s3Sync;
+
+        if (!sync?.enabled || !config.prefix || !config.s3SourceFolder) {
+          continue;
+        }
+
+        if (sync.expiresAt && new Date(sync.expiresAt).getTime() <= now) {
+          await saveChannelConfig(s3Client, channelId, {
+            s3Sync: {
+              ...sync,
+              enabled: false,
+              nextRunAt: null,
+            },
+          });
+          continue;
+        }
+
+        if (!sync.nextRunAt || new Date(sync.nextRunAt).getTime() > now) {
+          continue;
+        }
+
+        try {
+          const result = await syncS3DataFolder({
+            deleteExtra: Boolean(sync.deleteExtra),
+            s3Client,
+            sourceFolder: config.s3SourceFolder,
+            targetFolder: config.prefix,
+          });
+          const nextRunAt = new Date(
+            Date.now() + sync.intervalMinutes * 60 * 1000,
+          ).toISOString();
+          const changedCount =
+            result.createdFiles.length +
+            result.updatedFiles.length +
+            result.deletedFiles.length;
+
+          await saveChannelConfig(s3Client, channelId, {
+            s3Sync: {
+              ...sync,
+              enabled: true,
+              lastResult: {
+                createdCount: result.createdFiles.length,
+                deletedCount: result.deletedFiles.length,
+                status: changedCount > 0 ? 'changed' : 'no_changes',
+                updatedCount: result.updatedFiles.length,
+              },
+              lastRunAt: new Date().toISOString(),
+              nextRunAt,
+              notify: sync.notify || 'changes',
+            },
+          });
+
+          if (changedCount > 0) {
+            await app.client.chat.postMessage({
+              channel: channelId,
+              text: getSyncS3ResultMessage({
+                deleteExtra: Boolean(sync.deleteExtra),
+                dryRun: false,
+                result,
+              }),
+            });
+          }
+        } catch (error) {
+          console.error(`Erro no sync automatico S3 do canal ${channelId}:`, error);
+
+          const nextRunAt = new Date(
+            Date.now() + sync.intervalMinutes * 60 * 1000,
+          ).toISOString();
+
+          await saveChannelConfig(s3Client, channelId, {
+            s3Sync: {
+              ...sync,
+              lastResult: {
+                error: error.message,
+                status: 'error',
+              },
+              lastRunAt: new Date().toISOString(),
+              nextRunAt,
+            },
+          });
+        }
+      }
     } catch (error) {
-      console.error('Erro no scheduler de sync do Drive:', error);
+      console.error('Erro no scheduler de sync:', error);
     } finally {
       isSyncSchedulerRunning = false;
     }
   };
 
-  setInterval(runDueDriveSyncs, SCHEDULER_TICK_MS);
-  runDueDriveSyncs();
+  setInterval(runDueSyncs, SCHEDULER_TICK_MS);
+  runDueSyncs();
 
   return app;
 };
