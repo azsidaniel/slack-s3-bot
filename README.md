@@ -34,7 +34,7 @@ Use mencionando o bot em uma thread.
 ### Configuracao
 
 - `set-s3-folder nome-da-pasta`: salva a pasta S3 de destino deste canal.
-- `set-s3-source-folder pasta-ou-s3://bucket/pasta`: salva a origem S3 para copiar `data/`.
+- `set-s3-source-folder pasta-ou-s3://bucket/pasta`: salva a origem S3 para copiar dados.
 - `set-drive-source-folder link-ou-id-da-pasta`: salva a pasta publica do Google Drive usada como fonte.
 
 ```text
@@ -156,8 +156,10 @@ o caminho completo quando a origem estiver em outro bucket:
 @info-s3 s3-sync
 ```
 
-O bot continua sincronizando apenas `data/`. Portanto, o segundo exemplo le a
-origem `s3://infogbucket/pesquisas-eleicoes/2026/quaest/data/` e copia para
+Ao informar somente uma pasta, o bot le `data/` dentro dela. Ao informar um
+caminho completo `s3://`, ele trata esse caminho como a propria pasta de dados.
+Portanto, o segundo exemplo le a origem
+`s3://infogbucket/pesquisas-eleicoes/2026/quaest/` e copia para
 `s3://<S3_BUCKET>/<pasta-do-canal>/data/`. A credencial AWS precisa ter
 `s3:ListBucket` e `s3:GetObject` no bucket de origem, alem das permissoes de
 escrita no bucket de destino.

@@ -4,7 +4,10 @@ const DATA_FOLDER = 'data/';
 
 const getDataPrefix = (folder) => `${folder}/${DATA_FOLDER}`;
 
-const getRelativeDataKey = (key, folder) => key.slice(getDataPrefix(folder).length);
+const getSourceDataPrefix = ({ sourceDataPrefix, sourceFolder }) =>
+  sourceDataPrefix || getDataPrefix(sourceFolder);
+
+const getRelativeDataKey = (key, dataPrefix) => key.slice(dataPrefix.length);
 
 const getFingerprint = (object) => ({
   eTag: object.ETag || null,
@@ -32,11 +35,11 @@ const hasObjectChanged = (source, target) => {
   );
 };
 
-const mapObjectsByRelativeKey = (objects, folder) => {
+const mapObjectsByRelativeKey = (objects, dataPrefix) => {
   const mapped = new Map();
 
   for (const object of objects) {
-    const relativeKey = getRelativeDataKey(object.Key, folder);
+    const relativeKey = getRelativeDataKey(object.Key, dataPrefix);
 
     if (relativeKey) {
       mapped.set(relativeKey, object);
@@ -51,14 +54,19 @@ export const syncS3DataFolder = async ({
   dryRun = false,
   s3Client,
   sourceBucket,
+  sourceDataPrefix,
   sourceFolder,
   targetFolder,
 }) => {
-  const sourceObjects = await listObjectsByPrefix(s3Client, getDataPrefix(sourceFolder), {
+  const resolvedSourceDataPrefix = getSourceDataPrefix({
+    sourceDataPrefix,
+    sourceFolder,
+  });
+  const sourceObjects = await listObjectsByPrefix(s3Client, resolvedSourceDataPrefix, {
     bucket: sourceBucket,
   });
   const targetObjects = await listObjectsByPrefix(s3Client, getDataPrefix(targetFolder));
-  const sourceByRelativeKey = mapObjectsByRelativeKey(sourceObjects, sourceFolder);
+  const sourceByRelativeKey = mapObjectsByRelativeKey(sourceObjects, resolvedSourceDataPrefix);
   const targetByRelativeKey = mapObjectsByRelativeKey(targetObjects, targetFolder);
   const createdFiles = [];
   const deletedFiles = [];
@@ -124,7 +132,7 @@ export const syncS3DataFolder = async ({
     createdFiles,
     deletedFiles,
     sourceBucket,
-    sourcePrefix: getDataPrefix(sourceFolder),
+    sourcePrefix: resolvedSourceDataPrefix,
     targetPrefix: getDataPrefix(targetFolder),
     unchangedFiles,
     updatedFiles,

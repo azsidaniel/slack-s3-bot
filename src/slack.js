@@ -208,12 +208,13 @@ const getS3SourceLocation = (config) => {
 
   return {
     bucket: config.s3SourceBucket || getS3Config().bucket,
+    dataPrefix: config.s3SourceDataPrefix || `${config.s3SourceFolder}/data/`,
     folder: config.s3SourceFolder,
   };
 };
 
-const isSameS3Location = ({ bucket, folder }, targetFolder) =>
-  bucket === getS3Config().bucket && folder === targetFolder;
+const isSameS3Location = ({ bucket, dataPrefix }, targetFolder) =>
+  bucket === getS3Config().bucket && dataPrefix === `${targetFolder}/data/`;
 
 const formatFileList = (files, formatter, limit = 20) => {
   const visibleFiles = files.slice(0, limit);
@@ -518,6 +519,7 @@ const handleSetSourceFolder = async ({
     configuredLocation?.prefix || sourceFolder,
   );
   const s3SourceBucket = configuredLocation?.bucket;
+  const s3SourceDataPrefix = configuredLocation ? `${s3SourceFolder}/` : undefined;
 
   if (!s3SourceFolder) {
     await reply(say, {
@@ -528,7 +530,8 @@ const handleSetSourceFolder = async ({
   }
 
   const sourceBucket = s3SourceBucket || getS3Config().bucket;
-  const dataObjects = await listObjectsByPrefix(s3Client, `${s3SourceFolder}/data/`, {
+  const sourceDataPrefix = s3SourceDataPrefix || `${s3SourceFolder}/data/`;
+  const dataObjects = await listObjectsByPrefix(s3Client, sourceDataPrefix, {
     bucket: sourceBucket,
   });
 
@@ -536,8 +539,10 @@ const handleSetSourceFolder = async ({
     await reply(say, {
       threadTs,
       text: [
-        `Nao encontrei arquivos em ${getS3Uri(`${s3SourceFolder}/data/`, sourceBucket)}`,
-        'Confirme se a pasta origem esta correta e se ela possui arquivos em data/.',
+        `Nao encontrei arquivos em ${getS3Uri(sourceDataPrefix, sourceBucket)}`,
+        configuredLocation
+          ? 'Confirme se este caminho aponta diretamente para os arquivos de dados.'
+          : 'Confirme se a pasta origem esta correta e se ela possui arquivos em data/.',
       ].join('\n'),
     });
     return;
@@ -547,6 +552,7 @@ const handleSetSourceFolder = async ({
     channelId,
     channelName,
     s3SourceBucket,
+    s3SourceDataPrefix,
     s3SourceFolder,
   });
 
@@ -554,7 +560,7 @@ const handleSetSourceFolder = async ({
     threadTs,
     text: [
       `Pasta S3 de origem salva para este canal: ${getS3Uri(`${s3SourceFolder}/`, sourceBucket)}`,
-      `Origem data/: ${getS3Uri(`${s3SourceFolder}/data/`, sourceBucket)}`,
+      `Dados de origem: ${getS3Uri(sourceDataPrefix, sourceBucket)}`,
       `Arquivos encontrados agora: ${dataObjects.length}`,
       `Use \`${BOT_MENTION_LABEL} s3-sync --dry-run\` para conferir antes de copiar.`,
     ].join('\n'),
@@ -645,7 +651,7 @@ const getChannelStatusMessage = ({ channelName, config }) => {
   return [
     `Status do canal #${channelName}:`,
     `S3: ${config?.prefix || 'nao configurado'}`,
-    `S3 origem: ${s3Source ? getS3Uri(`${s3Source.folder}/`, s3Source.bucket) : 'nao configurado'}`,
+    `S3 origem: ${s3Source ? getS3Uri(s3Source.dataPrefix, s3Source.bucket) : 'nao configurado'}`,
     `Drive: ${config?.driveFolderId || 'nao configurado'}`,
     `Drive sync automatico: ${driveSyncStatus}`,
     `Drive ultima sync: ${formatDateTime(driveSync?.lastRunAt)}`,
@@ -727,6 +733,7 @@ const handleSyncS3 = async ({
     dryRun,
     s3Client,
     sourceBucket: source.bucket,
+    sourceDataPrefix: source.dataPrefix,
     sourceFolder: config.s3SourceFolder,
     targetFolder: prefix,
   });
@@ -964,7 +971,7 @@ const handleSyncS3Schedule = async ({
     threadTs,
     text: [
       'Agenda S3 salva.',
-      `Origem: ${getS3Uri(`${source.folder}/data/`, source.bucket)}`,
+      `Origem: ${getS3Uri(source.dataPrefix, source.bucket)}`,
       `Destino: ${getS3Uri(`${config.prefix}/data/`)}`,
       `Timezone: ${SCHEDULE_TIME_ZONE}`,
       `Modo: ${deleteExtra ? 'espelhar com delete' : 'copiar novos/alterados'}`,
@@ -1759,6 +1766,7 @@ export const createSlackApp = () => {
             deleteExtra: Boolean(sync.deleteExtra),
             s3Client,
             sourceBucket: source.bucket,
+            sourceDataPrefix: source.dataPrefix,
             sourceFolder: config.s3SourceFolder,
             targetFolder: config.prefix,
           });
@@ -1852,6 +1860,7 @@ export const createSlackApp = () => {
             deleteExtra: Boolean(schedule.deleteExtra),
             s3Client,
             sourceBucket: source.bucket,
+            sourceDataPrefix: source.dataPrefix,
             sourceFolder: config.s3SourceFolder,
             targetFolder: config.prefix,
           });
