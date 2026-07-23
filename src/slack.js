@@ -504,8 +504,9 @@ const handleSetSourceFolder = async ({
   threadTs,
 }) => {
   const configuredLocation = parseS3Location(sourceFolder);
+  const isS3LocationInput = /^<?s3:\/\//.test(String(sourceFolder).trim());
 
-  if (String(sourceFolder).trim().startsWith('s3://') && !configuredLocation) {
+  if (isS3LocationInput && !configuredLocation) {
     await reply(say, {
       threadTs,
       text: `Caminho S3 invalido. Use, por exemplo: \`${BOT_MENTION_LABEL} set-s3-source-folder s3://infogbucket/pesquisas-eleicoes/2026/quaest\``,

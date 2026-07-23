@@ -159,7 +159,9 @@ export const getS3Uri = (key, bucket) => {
 };
 
 export const parseS3Location = (input = '') => {
-  const value = String(input).trim();
+  const rawValue = String(input).trim();
+  const slackLink = rawValue.match(/^<([^>|]+)(?:\|[^>]*)?>$/);
+  const value = slackLink ? slackLink[1] : rawValue;
 
   if (!value.startsWith('s3://')) {
     return null;
