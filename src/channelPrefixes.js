@@ -101,10 +101,11 @@ export const saveDriveFolder = async (
 
 export const saveS3SourceFolder = async (
   s3Client,
-  { channelId, channelName, s3SourceFolder },
+  { channelId, channelName, s3SourceBucket, s3SourceFolder },
 ) => {
   await saveChannelConfig(s3Client, channelId, {
     channelName,
+    s3SourceBucket,
     s3SourceFolder,
   });
 };

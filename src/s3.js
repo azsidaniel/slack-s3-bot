@@ -28,7 +28,7 @@ export const getS3Config = () => ({
 export const createS3Client = () => {
   const { region } = getS3Config();
 
-  return new S3Client({ region });
+  return new S3Client({ followRegionRedirects: true, region });
 };
 
 export const assertBucketAccess = async (s3Client) => {
@@ -43,15 +43,15 @@ export const listProjectObjects = async (s3Client, channelName) => {
   return listObjectsByPrefix(s3Client, prefix);
 };
 
-export const listObjectsByPrefix = async (s3Client, prefix) => {
-  const { bucket } = getS3Config();
+export const listObjectsByPrefix = async (s3Client, prefix, { bucket } = {}) => {
+  const targetBucket = bucket || getS3Config().bucket;
   const objects = [];
   let ContinuationToken;
 
   do {
     const result = await s3Client.send(
       new ListObjectsV2Command({
-        Bucket: bucket,
+        Bucket: targetBucket,
         ContinuationToken,
         Prefix: prefix,
       }),
@@ -64,14 +64,18 @@ export const listObjectsByPrefix = async (s3Client, prefix) => {
   return objects;
 };
 
-export const copyObject = async (s3Client, { destinationKey, sourceKey }) => {
-  const { acl, bucket } = getS3Config();
+export const copyObject = async (
+  s3Client,
+  { destinationKey, sourceBucket, sourceKey },
+) => {
+  const { acl, bucket: destinationBucket } = getS3Config();
+  const copySourceBucket = sourceBucket || destinationBucket;
 
   await s3Client.send(
     new CopyObjectCommand({
       ACL: acl,
-      Bucket: bucket,
-      CopySource: `${bucket}/${encodeURIComponent(sourceKey).replace(/%2F/g, '/')}`,
+      Bucket: destinationBucket,
+      CopySource: `${copySourceBucket}/${encodeURIComponent(sourceKey).replace(/%2F/g, '/')}`,
       Key: destinationKey,
       MetadataDirective: 'COPY',
     }),
@@ -148,8 +152,27 @@ export const putJsonObject = async (s3Client, { key, value }) => {
   );
 };
 
-export const getS3Uri = (key) => {
-  const { bucket } = getS3Config();
+export const getS3Uri = (key, bucket) => {
+  const targetBucket = bucket || getS3Config().bucket;
 
-  return `s3://${bucket}/${key}`;
+  return `s3://${targetBucket}/${key}`;
+};
+
+export const parseS3Location = (input = '') => {
+  const value = String(input).trim();
+
+  if (!value.startsWith('s3://')) {
+    return null;
+  }
+
+  const location = value.slice('s3://'.length).replace(/^\/+|\/+$/g, '');
+  const separatorIndex = location.indexOf('/');
+  const bucket = separatorIndex < 0 ? location : location.slice(0, separatorIndex);
+  const prefix = separatorIndex < 0 ? '' : location.slice(separatorIndex + 1);
+
+  if (!bucket || !prefix || bucket.includes('..') || prefix.includes('..') || /\\/.test(location)) {
+    return null;
+  }
+
+  return { bucket, prefix };
 };

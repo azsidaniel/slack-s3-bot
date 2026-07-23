@@ -22,6 +22,7 @@ import {
   getS3Uri,
   listObjectsByPrefix,
   listProjectObjects,
+  parseS3Location,
   uploadObject,
 } from './s3.js';
 import { syncDriveFolderToS3 } from './syncDrive.js';
@@ -129,13 +130,13 @@ const getHelpMessage = () =>
     '',
     'Configuracao:',
     `\`${BOT_MENTION_LABEL} set-s3-folder nome-da-pasta\` - salva a pasta S3 de destino deste canal.`,
-    `\`${BOT_MENTION_LABEL} set-s3-source-folder nome-da-pasta\` - salva a pasta S3 de origem para copiar data/.`,
+    `\`${BOT_MENTION_LABEL} set-s3-source-folder pasta-ou-s3://bucket/pasta\` - salva a origem S3 para copiar data/.`,
     `\`${BOT_MENTION_LABEL} set-drive-source-folder link-ou-id-da-pasta\` - salva a pasta publica do Google Drive usada como fonte.`,
     '',
     'S3:',
     `\`${BOT_MENTION_LABEL} s3-list\` - lista arquivos da pasta S3 configurada.`,
     `\`${BOT_MENTION_LABEL} s3-download data/arquivo.txt\` - baixa um arquivo de data/ no S3 e anexa na thread.`,
-    `\`${BOT_MENTION_LABEL} s3-sync --dry-run\` - mostra o sync de data/ entre pasta origem e destino no mesmo bucket.`,
+    `\`${BOT_MENTION_LABEL} s3-sync --dry-run\` - mostra o sync de data/ entre a origem S3 e o destino deste canal.`,
     `\`${BOT_MENTION_LABEL} s3-sync\` - copia novos/alterados de data/ da pasta origem para a pasta deste canal.`,
     `\`${BOT_MENTION_LABEL} s3-sync --delete\` - espelha data/ e remove do destino arquivos ausentes na origem.`,
     `\`${BOT_MENTION_LABEL} s3-sync-on 5 7d\` - ativa sync automatico S3 por canal.`,
@@ -161,7 +162,7 @@ const getHelpMessage = () =>
     'Para usar Drive como fonte:',
     `\`${BOT_MENTION_LABEL} set-drive-source-folder link-ou-id-da-pasta\``,
     'Para usar S3 como fonte:',
-    `\`${BOT_MENTION_LABEL} set-s3-source-folder nome-da-pasta-origem\``,
+    `\`${BOT_MENTION_LABEL} set-s3-source-folder pasta-ou-s3://bucket/pasta\``,
   ].join('\n');
 
 const getUnconfiguredChannelMessage = (channelName) =>
@@ -199,6 +200,20 @@ const normalizeS3FolderName = (input = '') => {
 
   return folder;
 };
+
+const getS3SourceLocation = (config) => {
+  if (!config?.s3SourceFolder) {
+    return null;
+  }
+
+  return {
+    bucket: config.s3SourceBucket || getS3Config().bucket,
+    folder: config.s3SourceFolder,
+  };
+};
+
+const isSameS3Location = ({ bucket, folder }, targetFolder) =>
+  bucket === getS3Config().bucket && folder === targetFolder;
 
 const formatFileList = (files, formatter, limit = 20) => {
   const visibleFiles = files.slice(0, limit);
@@ -488,23 +503,39 @@ const handleSetSourceFolder = async ({
   sourceFolder,
   threadTs,
 }) => {
-  const s3SourceFolder = normalizeS3FolderName(sourceFolder);
+  const configuredLocation = parseS3Location(sourceFolder);
 
-  if (!s3SourceFolder) {
+  if (String(sourceFolder).trim().startsWith('s3://') && !configuredLocation) {
     await reply(say, {
       threadTs,
-      text: `Informe a pasta S3 de origem. Exemplo: \`${BOT_MENTION_LABEL} set-s3-source-folder nome-da-pasta-origem\``,
+      text: `Caminho S3 invalido. Use, por exemplo: \`${BOT_MENTION_LABEL} set-s3-source-folder s3://infogbucket/pesquisas-eleicoes/2026/quaest\``,
     });
     return;
   }
 
-  const dataObjects = await listObjectsByPrefix(s3Client, `${s3SourceFolder}/data/`);
+  const s3SourceFolder = normalizeS3FolderName(
+    configuredLocation?.prefix || sourceFolder,
+  );
+  const s3SourceBucket = configuredLocation?.bucket;
+
+  if (!s3SourceFolder) {
+    await reply(say, {
+      threadTs,
+      text: `Informe a pasta S3 de origem. Exemplo: \`${BOT_MENTION_LABEL} set-s3-source-folder s3://infogbucket/pesquisas-eleicoes/2026/quaest\``,
+    });
+    return;
+  }
+
+  const sourceBucket = s3SourceBucket || getS3Config().bucket;
+  const dataObjects = await listObjectsByPrefix(s3Client, `${s3SourceFolder}/data/`, {
+    bucket: sourceBucket,
+  });
 
   if (dataObjects.length === 0) {
     await reply(say, {
       threadTs,
       text: [
-        `Nao encontrei arquivos em ${getS3Uri(`${s3SourceFolder}/data/`)}`,
+        `Nao encontrei arquivos em ${getS3Uri(`${s3SourceFolder}/data/`, sourceBucket)}`,
         'Confirme se a pasta origem esta correta e se ela possui arquivos em data/.',
       ].join('\n'),
     });
@@ -514,14 +545,15 @@ const handleSetSourceFolder = async ({
   await saveS3SourceFolder(s3Client, {
     channelId,
     channelName,
+    s3SourceBucket,
     s3SourceFolder,
   });
 
   await reply(say, {
     threadTs,
     text: [
-      `Pasta S3 de origem salva para este canal: ${s3SourceFolder}`,
-      `Origem data/: ${getS3Uri(`${s3SourceFolder}/data/`)}`,
+      `Pasta S3 de origem salva para este canal: ${getS3Uri(`${s3SourceFolder}/`, sourceBucket)}`,
+      `Origem data/: ${getS3Uri(`${s3SourceFolder}/data/`, sourceBucket)}`,
       `Arquivos encontrados agora: ${dataObjects.length}`,
       `Use \`${BOT_MENTION_LABEL} s3-sync --dry-run\` para conferir antes de copiar.`,
     ].join('\n'),
@@ -593,6 +625,7 @@ const getChannelStatusMessage = ({ channelName, config }) => {
   const driveSync = config?.driveSync;
   const s3Sync = config?.s3Sync;
   const s3SyncSchedule = config?.s3SyncSchedule;
+  const s3Source = getS3SourceLocation(config);
   const driveSyncStatus = driveSync?.enabled
     ? `ativo, a cada ${driveSync.intervalMinutes} minuto(s), expira em ${formatDateTime(driveSync.expiresAt)}`
     : 'desativado';
@@ -611,7 +644,7 @@ const getChannelStatusMessage = ({ channelName, config }) => {
   return [
     `Status do canal #${channelName}:`,
     `S3: ${config?.prefix || 'nao configurado'}`,
-    `S3 origem: ${config?.s3SourceFolder || 'nao configurado'}`,
+    `S3 origem: ${s3Source ? getS3Uri(`${s3Source.folder}/`, s3Source.bucket) : 'nao configurado'}`,
     `Drive: ${config?.driveFolderId || 'nao configurado'}`,
     `Drive sync automatico: ${driveSyncStatus}`,
     `Drive ultima sync: ${formatDateTime(driveSync?.lastRunAt)}`,
@@ -646,7 +679,7 @@ const getSyncS3ResultMessage = ({ deleteExtra, dryRun, result }) => {
 
   return [
     header,
-    `Origem: ${getS3Uri(result.sourcePrefix)}`,
+    `Origem: ${getS3Uri(result.sourcePrefix, result.sourceBucket)}`,
     `Destino: ${getS3Uri(result.targetPrefix)}`,
     `Novos: ${result.createdFiles.length}`,
     `Alterados: ${result.updatedFiles.length}`,
@@ -678,7 +711,9 @@ const handleSyncS3 = async ({
     return;
   }
 
-  if (config.s3SourceFolder === prefix) {
+  const source = getS3SourceLocation(config);
+
+  if (isSameS3Location(source, prefix)) {
     await reply(say, {
       threadTs,
       text: 'A pasta S3 de origem e igual a pasta de destino deste canal. Configure uma pasta origem diferente.',
@@ -690,6 +725,7 @@ const handleSyncS3 = async ({
     deleteExtra,
     dryRun,
     s3Client,
+    sourceBucket: source.bucket,
     sourceFolder: config.s3SourceFolder,
     targetFolder: prefix,
   });
@@ -704,7 +740,7 @@ const getS3SyncConfigMissingMessage = () =>
   [
     'Configure a pasta S3 de destino e a pasta S3 de origem antes de ativar o sync automatico S3.',
     `Destino: \`${BOT_MENTION_LABEL} set-s3-folder nome-da-pasta\``,
-    `Origem: \`${BOT_MENTION_LABEL} set-s3-source-folder nome-da-pasta-origem\``,
+    `Origem: \`${BOT_MENTION_LABEL} set-s3-source-folder pasta-ou-s3://bucket/pasta\``,
   ].join('\n');
 
 const handleSyncS3On = async ({
@@ -727,7 +763,9 @@ const handleSyncS3On = async ({
     return;
   }
 
-  if (config.s3SourceFolder === config.prefix) {
+  const source = getS3SourceLocation(config);
+
+  if (isSameS3Location(source, config.prefix)) {
     await reply(say, {
       threadTs,
       text: 'A pasta S3 de origem e igual a pasta de destino deste canal. Configure uma pasta origem diferente.',
@@ -871,7 +909,9 @@ const handleSyncS3Schedule = async ({
     return;
   }
 
-  if (config.s3SourceFolder === config.prefix) {
+  const source = getS3SourceLocation(config);
+
+  if (isSameS3Location(source, config.prefix)) {
     await reply(say, {
       threadTs,
       text: 'A pasta S3 de origem e igual a pasta de destino deste canal. Configure uma pasta origem diferente.',
@@ -923,7 +963,7 @@ const handleSyncS3Schedule = async ({
     threadTs,
     text: [
       'Agenda S3 salva.',
-      `Origem: ${getS3Uri(`${config.s3SourceFolder}/data/`)}`,
+      `Origem: ${getS3Uri(`${source.folder}/data/`, source.bucket)}`,
       `Destino: ${getS3Uri(`${config.prefix}/data/`)}`,
       `Timezone: ${SCHEDULE_TIME_ZONE}`,
       `Modo: ${deleteExtra ? 'espelhar com delete' : 'copiar novos/alterados'}`,
@@ -1713,9 +1753,11 @@ export const createSlackApp = () => {
         }
 
         try {
+          const source = getS3SourceLocation(config);
           const result = await syncS3DataFolder({
             deleteExtra: Boolean(sync.deleteExtra),
             s3Client,
+            sourceBucket: source.bucket,
             sourceFolder: config.s3SourceFolder,
             targetFolder: config.prefix,
           });
@@ -1804,9 +1846,11 @@ export const createSlackApp = () => {
             },
           });
 
+          const source = getS3SourceLocation(config);
           const result = await syncS3DataFolder({
             deleteExtra: Boolean(schedule.deleteExtra),
             s3Client,
+            sourceBucket: source.bucket,
             sourceFolder: config.s3SourceFolder,
             targetFolder: config.prefix,
           });

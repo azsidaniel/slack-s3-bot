@@ -34,12 +34,13 @@ Use mencionando o bot em uma thread.
 ### Configuracao
 
 - `set-s3-folder nome-da-pasta`: salva a pasta S3 de destino deste canal.
-- `set-s3-source-folder nome-da-pasta-origem`: salva a pasta S3 de origem para copiar `data/`.
+- `set-s3-source-folder pasta-ou-s3://bucket/pasta`: salva a origem S3 para copiar `data/`.
 - `set-drive-source-folder link-ou-id-da-pasta`: salva a pasta publica do Google Drive usada como fonte.
 
 ```text
 @info-s3 set-s3-folder nome-da-pasta
 @info-s3 set-s3-source-folder nome-da-pasta-origem
+@info-s3 set-s3-source-folder s3://infogbucket/pesquisas-eleicoes/2026/quaest
 @info-s3 set-drive-source-folder link-ou-id-da-pasta
 ```
 
@@ -47,7 +48,7 @@ Use mencionando o bot em uma thread.
 
 - `s3-list`: lista arquivos da pasta S3 configurada.
 - `s3-download data/arquivo.txt`: baixa um arquivo de `data/` no S3 e anexa na thread.
-- `s3-sync --dry-run`: mostra o sync de `data/` entre pasta origem e destino no mesmo bucket.
+- `s3-sync --dry-run`: mostra o sync de `data/` entre a origem S3 e o destino deste canal.
 - `s3-sync`: copia novos/alterados de `data/` da pasta origem para a pasta deste canal.
 - `s3-sync --delete`: espelha `data/` e remove do destino arquivos ausentes na origem.
 - `s3-sync-on <minutos> <duracao>`: ativa sync automatico S3 com expiracao obrigatoria.
@@ -144,14 +145,22 @@ pasta salva:
 Esse mapeamento fica salvo localmente em `data/channel-prefixes.json`.
 Em AWS, use `PREFIX_STORE=s3` para salvar o mapeamento no proprio bucket.
 
-Para copiar arquivos `data/` de outra pasta do mesmo bucket para a pasta deste
-canal:
+Para copiar arquivos `data/` de outra pasta S3 para a pasta deste canal, informe
+somente a pasta quando ela estiver no bucket configurado em `S3_BUCKET`, ou use
+o caminho completo quando a origem estiver em outro bucket:
 
 ```text
 @info-s3 set-s3-source-folder nome-da-pasta-origem
+@info-s3 set-s3-source-folder s3://infogbucket/pesquisas-eleicoes/2026/quaest
 @info-s3 s3-sync --dry-run
 @info-s3 s3-sync
 ```
+
+O bot continua sincronizando apenas `data/`. Portanto, o segundo exemplo le a
+origem `s3://infogbucket/pesquisas-eleicoes/2026/quaest/data/` e copia para
+`s3://<S3_BUCKET>/<pasta-do-canal>/data/`. A credencial AWS precisa ter
+`s3:ListBucket` e `s3:GetObject` no bucket de origem, alem das permissoes de
+escrita no bucket de destino.
 
 Use `--delete` apenas quando quiser espelhar completamente `data/`, removendo do
 destino arquivos que nao existem mais na origem:

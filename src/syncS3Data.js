@@ -50,10 +50,13 @@ export const syncS3DataFolder = async ({
   deleteExtra = false,
   dryRun = false,
   s3Client,
+  sourceBucket,
   sourceFolder,
   targetFolder,
 }) => {
-  const sourceObjects = await listObjectsByPrefix(s3Client, getDataPrefix(sourceFolder));
+  const sourceObjects = await listObjectsByPrefix(s3Client, getDataPrefix(sourceFolder), {
+    bucket: sourceBucket,
+  });
   const targetObjects = await listObjectsByPrefix(s3Client, getDataPrefix(targetFolder));
   const sourceByRelativeKey = mapObjectsByRelativeKey(sourceObjects, sourceFolder);
   const targetByRelativeKey = mapObjectsByRelativeKey(targetObjects, targetFolder);
@@ -69,7 +72,7 @@ export const syncS3DataFolder = async ({
     const item = {
       relativeKey,
       sourceKey,
-      sourceUri: getS3Uri(sourceKey),
+      sourceUri: getS3Uri(sourceKey, sourceBucket),
       targetKey,
       targetUri: getS3Uri(targetKey),
       ...getFingerprint(sourceObject),
@@ -107,6 +110,7 @@ export const syncS3DataFolder = async ({
     for (const file of [...createdFiles, ...updatedFiles]) {
       await copyObject(s3Client, {
         destinationKey: file.targetKey,
+        sourceBucket,
         sourceKey: file.sourceKey,
       });
     }
@@ -119,6 +123,7 @@ export const syncS3DataFolder = async ({
   return {
     createdFiles,
     deletedFiles,
+    sourceBucket,
     sourcePrefix: getDataPrefix(sourceFolder),
     targetPrefix: getDataPrefix(targetFolder),
     unchangedFiles,
