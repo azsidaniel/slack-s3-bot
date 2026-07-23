@@ -46,6 +46,7 @@ const COMMANDS = new Set([
   's3-sync-off',
   's3-sync-on',
   's3-sync-schedule',
+  's3-sync-schedule-off',
   'test',
   'slack-upload',
 ]);
@@ -144,6 +145,8 @@ const getHelpMessage = () =>
     `\`${BOT_MENTION_LABEL} s3-sync-on\` - reativa o sync automatico S3 com a configuracao anterior.`,
     `\`${BOT_MENTION_LABEL} s3-sync-off\` - pausa o sync automatico S3, preservando a configuracao.`,
     `\`${BOT_MENTION_LABEL} s3-sync-schedule\` - salva agenda JSON de datas exatas para sync S3.`,
+    `\`${BOT_MENTION_LABEL} s3-sync-schedule-off\` - pausa a agenda S3, preservando as datas.`,
+    `\`${BOT_MENTION_LABEL} s3-sync-schedule []\` - apaga a agenda S3 deste canal.`,
     '',
     'Drive:',
     `\`${BOT_MENTION_LABEL} drive-list\` - lista arquivos da pasta Drive configurada.`,
@@ -278,7 +281,7 @@ const parseS3SchedulePayload = (payload) => {
 
   runs.sort((a, b) => new Date(a.runAt).getTime() - new Date(b.runAt).getTime());
 
-  return { ignoredRuns, runs };
+  return { ignoredRuns, isEmpty: parsed.length === 0, runs };
 };
 
 const getScheduleLines = (runs, limit = 10) =>
@@ -899,6 +902,26 @@ const handleSyncS3Off = async ({
   });
 };
 
+const handleSyncS3ScheduleOff = async ({
+  channelId,
+  config,
+  say,
+  s3Client,
+  threadTs,
+}) => {
+  await saveChannelConfig(s3Client, channelId, {
+    s3SyncSchedule: {
+      ...(config?.s3SyncSchedule || {}),
+      enabled: false,
+    },
+  });
+
+  await reply(say, {
+    threadTs,
+    text: 'Agenda S3 pausada para este canal. As datas configuradas foram preservadas.',
+  });
+};
+
 const handleSyncS3Schedule = async ({
   channelId,
   channelName,
@@ -909,6 +932,43 @@ const handleSyncS3Schedule = async ({
   s3Client,
   threadTs,
 }) => {
+  let parsedSchedule;
+
+  try {
+    parsedSchedule = parseS3SchedulePayload(payload);
+  } catch (error) {
+    await reply(say, {
+      threadTs,
+      text: [
+        `Agenda invalida: ${error.message}`,
+        `Exemplo: \`${BOT_MENTION_LABEL} s3-sync-schedule [{"data":"14/08/2026","hora":"18:15:00"}]\``,
+      ].join('\n'),
+    });
+    return;
+  }
+
+  const { ignoredRuns, isEmpty, runs } = parsedSchedule;
+
+  if (isEmpty) {
+    await saveChannelConfig(s3Client, channelId, {
+      channelName,
+      s3SyncSchedule: {
+        deleteExtra: false,
+        enabled: false,
+        ignoredRuns: [],
+        lastResult: null,
+        runs: [],
+        timezone: SCHEDULE_TIME_ZONE,
+      },
+    });
+
+    await reply(say, {
+      threadTs,
+      text: 'Agenda S3 apagada para este canal.',
+    });
+    return;
+  }
+
   if (!config?.prefix || !config?.s3SourceFolder) {
     await reply(say, {
       threadTs,
@@ -926,23 +986,6 @@ const handleSyncS3Schedule = async ({
     });
     return;
   }
-
-  let parsedSchedule;
-
-  try {
-    parsedSchedule = parseS3SchedulePayload(payload);
-  } catch (error) {
-    await reply(say, {
-      threadTs,
-      text: [
-        `Agenda invalida: ${error.message}`,
-        `Exemplo: \`${BOT_MENTION_LABEL} s3-sync-schedule [{"data":"14/08/2026","hora":"18:15:00"}]\``,
-      ].join('\n'),
-    });
-    return;
-  }
-
-  const { ignoredRuns, runs } = parsedSchedule;
 
   if (runs.length === 0) {
     await reply(say, {
@@ -1546,6 +1589,17 @@ export const createSlackApp = () => {
           config: savedConfig,
           deleteExtra: args.includes('--delete'),
           payload: getCommandPayload(event.text, command),
+          say,
+          s3Client,
+          threadTs,
+        });
+        return;
+      }
+
+      if (command === 's3-sync-schedule-off') {
+        await handleSyncS3ScheduleOff({
+          channelId: event.channel,
+          config: savedConfig,
           say,
           s3Client,
           threadTs,

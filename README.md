@@ -56,6 +56,8 @@ Use mencionando o bot em uma thread.
 - `s3-sync-on`: reativa o sync automatico S3 com a configuracao anterior.
 - `s3-sync-off`: pausa sync automatico S3 e preserva a configuracao.
 - `s3-sync-schedule`: salva uma agenda JSON de datas/horas exatas para sync S3.
+- `s3-sync-schedule-off`: pausa a agenda S3 e preserva as datas configuradas.
+- `s3-sync-schedule []`: apaga a agenda S3 deste canal.
 
 ```text
 @info-s3 s3-list
@@ -68,6 +70,8 @@ Use mencionando o bot em uma thread.
 @info-s3 s3-sync-on
 @info-s3 s3-sync-off
 @info-s3 s3-sync-schedule [{"data":"14/08/2026","hora":"18:15:00"}]
+@info-s3 s3-sync-schedule-off
+@info-s3 s3-sync-schedule []
 ```
 
 ### Drive
@@ -210,6 +214,18 @@ Use `--delete` para salvar a agenda em modo espelhamento:
 [
   { "data": "14/08/2026", "hora": "18:15:00" }
 ]
+```
+
+Para pausar a agenda sem apagar as datas salvas:
+
+```text
+@info-s3 s3-sync-schedule-off
+```
+
+Para apagar completamente a agenda e suas execucoes pendentes:
+
+```text
+@info-s3 s3-sync-schedule []
 ```
 
 Se o bot estiver indisponivel no horario exato e voltar depois, execucoes
